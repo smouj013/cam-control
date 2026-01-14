@@ -1,0 +1,521 @@
+<!-- control.html — CamStudio Room CONTROL (v1.0) -->
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#070A12" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>CamStudio — Control Room</title>
+
+  <style>
+    :root{
+      --bg0:#070A12;
+      --bg1:#0B1328;
+      --panel: rgba(255,255,255,0.06);
+      --panel2: rgba(255,255,255,0.10);
+      --stroke: rgba(255,255,255,0.14);
+      --stroke2: rgba(255,255,255,0.20);
+      --text: rgba(231,233,234,0.94);
+      --muted: rgba(231,233,234,0.68);
+      --muted2: rgba(231,233,234,0.52);
+      --good:#2ED3B7;
+      --warn:#F5C451;
+      --bad:#FF5C7A;
+      --accent:#82A6FF;
+      --shadow: 0 18px 40px rgba(0,0,0,0.45);
+      --radius: 18px;
+      --radius2: 12px;
+      --blur: 14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans";
+      background:
+        radial-gradient(1200px 700px at 22% 12%, rgba(130,166,255,0.14), transparent 55%),
+        radial-gradient(900px 650px at 82% 34%, rgba(46,211,183,0.10), transparent 55%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      color: var(--text);
+      overflow:hidden;
+    }
+
+    .grid{
+      height:100%;
+      display:grid;
+      grid-template-rows: auto 1fr;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .topbar{
+      display:flex;
+      gap: 12px;
+      align-items:center;
+      justify-content:space-between;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.06);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      padding: 10px 12px;
+      min-height: 62px;
+    }
+
+    .brand{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      min-width: 280px;
+    }
+    .logo{
+      width:34px;height:34px;border-radius: 11px;
+      background: linear-gradient(135deg, rgba(130,166,255,0.9), rgba(46,211,183,0.9));
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+      position:relative;
+      overflow:hidden;
+    }
+    .logo:after{
+      content:"";
+      position:absolute; inset:-22%;
+      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.45), transparent 55%);
+      transform: rotate(18deg);
+    }
+    .brand strong{ font-weight: 780; letter-spacing: .2px; }
+    .brand .sub{ color: var(--muted2); font-size: 12px; margin-top:2px; }
+
+    .pill{
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: rgba(0,0,0,0.20);
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1;
+      white-space:nowrap;
+    }
+    .dot{ width:9px;height:9px;border-radius: 99px; background: var(--muted2); box-shadow: 0 0 0 3px rgba(255,255,255,0.06) inset;}
+    .dot.good{ background: var(--good); }
+    .dot.warn{ background: var(--warn); }
+    .dot.bad{ background: var(--bad); }
+
+    .btn{
+      appearance:none;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.07);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 9px 10px;
+      font-size: 12px;
+      cursor:pointer;
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+      transition: transform .08s ease, background .18s ease, border-color .18s ease;
+      user-select:none;
+    }
+    .btn:hover{ background: rgba(255,255,255,0.10); border-color: var(--stroke2); }
+    .btn:active{ transform: translateY(1px); }
+    .btn.primary{ border-color: rgba(130,166,255,0.35); background: rgba(130,166,255,0.14); }
+    .btn.good{ border-color: rgba(46,211,183,0.35); background: rgba(46,211,183,0.12); }
+    .btn.danger{ border-color: rgba(255,92,122,0.35); background: rgba(255,92,122,0.12); }
+    .btn.ghost{ background: rgba(0,0,0,0.18); }
+    .btn:disabled{ opacity:.45; cursor:not-allowed; }
+
+    .main{
+      display:grid;
+      grid-template-columns: 420px 1fr;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .panel{
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.06);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      min-height: 0;
+      overflow:hidden;
+      display:flex;
+      flex-direction:column;
+    }
+
+    .panelHead{
+      padding: 12px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.10);
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+    }
+
+    .panelHead .title{
+      font-weight: 760;
+      letter-spacing: .2px;
+      display:flex; gap:10px; align-items:center;
+    }
+    .panelHead .hint{ color: var(--muted2); font-size: 12px; }
+
+    .controls{
+      padding: 12px;
+      display:grid;
+      gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.10);
+    }
+
+    .row{
+      display:flex;
+      gap: 10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+
+    .input, select{
+      width:100%;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.22);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 10px;
+      font-size: 13px;
+      outline:none;
+      transition: border-color .18s ease, background .18s ease;
+    }
+    .input:focus, select:focus{ border-color: rgba(130,166,255,0.40); background: rgba(0,0,0,0.30); }
+
+    .split{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .list{
+      padding: 8px;
+      overflow:auto;
+      min-height:0;
+    }
+
+    .card{
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.20);
+      border-radius: 14px;
+      padding: 10px;
+      margin: 8px 0;
+      cursor:pointer;
+      transition: border-color .18s ease, background .18s ease, transform .08s ease;
+    }
+    .card:hover{
+      border-color: rgba(130,166,255,0.30);
+      background: rgba(0,0,0,0.26);
+    }
+    .card:active{ transform: translateY(1px); }
+    .card.active{
+      border-color: rgba(130,166,255,0.50);
+      background: rgba(130,166,255,0.10);
+    }
+
+    .cardTop{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+    }
+
+    .camTitle{
+      font-weight: 760;
+      letter-spacing: .2px;
+      font-size: 13px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      max-width: 290px;
+    }
+    .badge{
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.16);
+      color: rgba(231,233,234,0.86);
+      background: rgba(0,0,0,0.22);
+      white-space:nowrap;
+    }
+
+    .cardMeta{
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+
+    .tags{
+      color: var(--muted2);
+      font-size: 12px;
+      margin-top: 6px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+
+    .right{
+      display:grid;
+      grid-template-rows: auto 1fr;
+      gap: 12px;
+      min-height:0;
+    }
+
+    .program{
+      padding: 12px;
+      display:grid;
+      gap: 10px;
+    }
+
+    .program .big{
+      font-weight: 820;
+      letter-spacing: .2px;
+      font-size: 16px;
+      margin:0;
+    }
+
+    .program .sub{
+      color: var(--muted2);
+      font-size: 12px;
+      margin-top:-4px;
+    }
+
+    .kpi{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .kpi .box{
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.20);
+      border-radius: 14px;
+      padding: 10px;
+    }
+    .kpi .label{ color: var(--muted2); font-size: 11px; }
+    .kpi .value{ margin-top:4px; font-weight: 780; }
+
+    .detail{
+      padding: 12px;
+      overflow:auto;
+      min-height:0;
+      border-top: 1px solid rgba(255,255,255,0.10);
+    }
+
+    .detail .head{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .detail h3{
+      margin:0;
+      font-weight: 820;
+      font-size: 16px;
+      letter-spacing: .2px;
+      line-height:1.2;
+    }
+    .detail .small{ color: var(--muted); font-size: 12px; line-height: 1.35; }
+
+    .thumb{
+      width: 220px;
+      height: 124px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.22);
+      overflow:hidden;
+      flex: 0 0 auto;
+    }
+    .thumb img{
+      width:100%; height:100%;
+      object-fit: cover;
+      display:block;
+      filter: contrast(1.04) saturate(1.05);
+    }
+
+    .footerBtns{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top: 10px;
+    }
+
+    .hr{
+      height:1px;
+      background: rgba(255,255,255,0.10);
+      margin: 10px 0;
+    }
+
+    .mono{ font-family: var(--mono); }
+  </style>
+</head>
+
+<body>
+  <div class="grid">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <div><strong>CamStudio</strong> <span style="color:var(--muted2)">• Control Room</span></div>
+          <div class="sub" id="subline">Cargando catálogo…</div>
+        </div>
+      </div>
+
+      <div class="row" style="justify-content:flex-end">
+        <span class="pill" title="Key activa">
+          <span style="opacity:.9">KEY</span>
+          <span class="badge" id="txtKey">main</span>
+        </span>
+        <span class="pill" id="pillPlayer">
+          <span class="dot" id="dotPlayer"></span>
+          <span id="txtPlayer">Player: desconectado</span>
+        </span>
+        <button class="btn ghost" id="btnPing" title="Ping">🛰️ Ping</button>
+        <button class="btn" id="btnReloadCams" title="Recargar cams.json">↻ Recargar</button>
+        <button class="btn danger" id="btnStop">⏹ Stop</button>
+      </div>
+    </header>
+
+    <div class="main">
+      <!-- Left: catalog -->
+      <section class="panel">
+        <div class="panelHead">
+          <div class="title">📡 Catálogo <span class="hint" id="txtCount">0</span></div>
+          <div class="row" style="gap:8px">
+            <button class="btn" id="btnPrev">⟵ Prev</button>
+            <button class="btn" id="btnNext">Next ⟶</button>
+          </div>
+        </div>
+
+        <div class="controls">
+          <input class="input" id="q" placeholder="Buscar… (título, id, tag, región)" autocomplete="off" />
+          <div class="split">
+            <select id="kind">
+              <option value="any">Tipo: cualquiera</option>
+              <option value="youtube">YouTube</option>
+              <option value="hls">HLS</option>
+              <option value="image">Imagen</option>
+            </select>
+            <select id="tag">
+              <option value="">Tag: (todas)</option>
+            </select>
+          </div>
+
+          <div class="row">
+            <button class="btn" id="btnFavOnly">★ Solo favs</button>
+            <button class="btn" id="btnClear">✕ Limpiar</button>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="row" style="justify-content:space-between">
+            <span class="pill"><span class="dot" id="dotMode"></span><span id="txtMode">Modo: manual</span></span>
+            <button class="btn good" id="btnTake">🎬 TAKE (Play)</button>
+          </div>
+
+          <div class="split">
+            <select id="rotKind">
+              <option value="any">Rotación: cualquier tipo</option>
+              <option value="youtube">Rotación: YouTube</option>
+              <option value="hls">Rotación: HLS</option>
+              <option value="image">Rotación: Imagen</option>
+            </select>
+            <input class="input" id="rotSec" type="number" min="8" max="3600" step="1" value="40" />
+          </div>
+
+          <div class="row">
+            <select id="rotTag">
+              <option value="">Rotación tag: (sin filtro)</option>
+            </select>
+            <button class="btn primary" id="btnRotate">⟲ Rotación</button>
+          </div>
+        </div>
+
+        <div class="list" id="list"></div>
+      </section>
+
+      <!-- Right: program + details -->
+      <section class="panel right">
+        <div class="program">
+          <div>
+            <p class="big" id="progTitle">Programa: —</p>
+            <div class="sub" id="progSub">Esperando estado del player…</div>
+          </div>
+
+          <div class="kpi">
+            <div class="box">
+              <div class="label">Estado</div>
+              <div class="value" id="kpiState">—</div>
+            </div>
+            <div class="box">
+              <div class="label">Mute</div>
+              <div class="value" id="kpiMute">—</div>
+            </div>
+            <div class="box">
+              <div class="label">Fails</div>
+              <div class="value" id="kpiFails">—</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <button class="btn" id="btnMute">🔇 Toggle mute</button>
+            <button class="btn" id="btnRotateNow">⚡ Rotar ahora</button>
+          </div>
+        </div>
+
+        <div class="detail">
+          <div class="head">
+            <div>
+              <h3 id="selTitle">Selecciona una cámara</h3>
+              <div class="small" id="selMeta">Haz click en una tarjeta del catálogo para ver detalles.</div>
+            </div>
+            <div class="thumb" id="thumbBox" style="display:none">
+              <img id="thumb" alt="thumbnail" />
+            </div>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="small">
+            <div><b>ID:</b> <span class="mono" id="selId">—</span></div>
+            <div><b>Tipo:</b> <span class="mono" id="selKind">—</span></div>
+            <div><b>Src:</b> <span class="mono" id="selSrc">—</span></div>
+            <div><b>Tags:</b> <span class="mono" id="selTags">—</span></div>
+            <div><b>Región:</b> <span class="mono" id="selRegion">—</span></div>
+          </div>
+
+          <div class="footerBtns">
+            <button class="btn good" id="btnPlaySel">▶ Play selección</button>
+            <button class="btn" id="btnFav">★ Fav</button>
+            <button class="btn" id="btnCopyId">⧉ Copiar ID</button>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="small">
+            Consejos: abre el player en OBS con <span class="badge">player.html?key=main</span> y controla desde aquí con <span class="badge">control.html?key=main</span>.
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="./control.js"></script>
+</body>
+</html>

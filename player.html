@@ -1,0 +1,350 @@
+<!-- player.html — CamStudio Room PLAYER (v1.0) -->
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#070A12" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>CamStudio — Player</title>
+
+  <style>
+    :root{
+      --bg0:#070A12;
+      --bg1:#0A1226;
+      --panel: rgba(255,255,255,0.06);
+      --panel2: rgba(255,255,255,0.10);
+      --stroke: rgba(255,255,255,0.14);
+      --stroke2: rgba(255,255,255,0.20);
+      --text: rgba(231,233,234,0.94);
+      --muted: rgba(231,233,234,0.68);
+      --muted2: rgba(231,233,234,0.52);
+      --good:#2ED3B7;
+      --warn:#F5C451;
+      --bad:#FF5C7A;
+      --accent:#82A6FF;
+      --shadow: 0 18px 40px rgba(0,0,0,0.45);
+      --radius: 18px;
+      --radius2: 12px;
+      --blur: 14px;
+    }
+
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
+      background:
+        radial-gradient(1200px 700px at 20% 12%, rgba(130,166,255,0.12), transparent 55%),
+        radial-gradient(900px 650px at 85% 30%, rgba(46,211,183,0.10), transparent 55%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      color: var(--text);
+      overflow:hidden;
+    }
+
+    .frame{
+      position:relative;
+      width:100%;
+      height:100%;
+      padding: 14px;
+      display:grid;
+      grid-template-rows: auto 1fr;
+      gap: 12px;
+    }
+
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding: 10px 12px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.06);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      min-height: 56px;
+    }
+
+    .brand{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      min-width: 260px;
+    }
+    .logo{
+      width:34px;height:34px;border-radius: 11px;
+      background: linear-gradient(135deg, rgba(130,166,255,0.9), rgba(46,211,183,0.9));
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+      position:relative;
+      overflow:hidden;
+    }
+    .logo:after{
+      content:"";
+      position:absolute; inset:-20%;
+      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.45), transparent 55%);
+      transform: rotate(18deg);
+    }
+    .brand strong{ font-weight: 760; letter-spacing: 0.2px; }
+    .brand .sub{ color: var(--muted2); font-size: 12px; margin-top:2px; }
+
+    .statusRow{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:flex-end;
+      flex-wrap:wrap;
+    }
+
+    .pill{
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: rgba(0,0,0,0.20);
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1;
+      white-space:nowrap;
+    }
+    .dot{ width:9px;height:9px;border-radius: 99px; background: var(--muted2); box-shadow: 0 0 0 3px rgba(255,255,255,0.06) inset;}
+    .dot.good{ background: var(--good); }
+    .dot.warn{ background: var(--warn); }
+    .dot.bad{ background: var(--bad); }
+
+    .btn{
+      appearance:none;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,0.07);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 9px 10px;
+      font-size: 12px;
+      cursor:pointer;
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+      transition: transform .08s ease, background .18s ease, border-color .18s ease;
+      user-select:none;
+    }
+    .btn:hover{ background: rgba(255,255,255,0.10); border-color: var(--stroke2); }
+    .btn:active{ transform: translateY(1px); }
+    .btn.primary{
+      border-color: rgba(130,166,255,0.35);
+      background: rgba(130,166,255,0.14);
+    }
+    .btn.danger{
+      border-color: rgba(255,92,122,0.35);
+      background: rgba(255,92,122,0.12);
+    }
+
+    .stage{
+      position:relative;
+      border-radius: var(--radius);
+      border: 1px solid var(--stroke);
+      background: rgba(0,0,0,0.30);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      display:grid;
+      place-items:stretch;
+    }
+
+    .playerArea{
+      position:absolute; inset:0;
+      display:grid;
+      place-items:stretch;
+    }
+
+    .playerArea iframe,
+    .playerArea video,
+    .playerArea img{
+      width:100%;
+      height:100%;
+      border:0;
+      display:block;
+      background: #000;
+      object-fit: cover;
+    }
+
+    .hud{
+      position:absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 14px;
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-end;
+      gap: 10px;
+      pointer-events:none;
+    }
+
+    .card{
+      pointer-events:auto;
+      max-width: min(680px, 100%);
+      padding: 12px 12px;
+      border-radius: var(--radius2);
+      border: 1px solid var(--stroke);
+      background: rgba(10,12,18,0.55);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    }
+
+    .nowTitle{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom: 8px;
+    }
+    .nowTitle .name{
+      font-weight: 740;
+      letter-spacing: 0.2px;
+      font-size: 14px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .nowTitle .meta{
+      display:flex; gap:8px; align-items:center;
+      color: var(--muted);
+      font-size: 12px;
+      white-space:nowrap;
+    }
+
+    .small{
+      color: var(--muted2);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .rightStack{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      align-items:flex-end;
+      min-width: 220px;
+    }
+
+    .signal{
+      display:flex;
+      gap: 10px;
+      align-items:center;
+      justify-content:flex-end;
+    }
+
+    .bars{
+      display:flex;
+      gap: 3px;
+      align-items:flex-end;
+      height: 14px;
+      padding: 0 2px;
+    }
+    .bars i{
+      width: 4px;
+      border-radius: 3px;
+      background: rgba(231,233,234,0.26);
+      display:block;
+    }
+    .bars i:nth-child(1){ height: 6px; }
+    .bars i:nth-child(2){ height: 9px; }
+    .bars i:nth-child(3){ height: 12px; }
+    .bars i:nth-child(4){ height: 14px; }
+    .bars.good i{ background: rgba(46,211,183,0.70); }
+    .bars.warn i{ background: rgba(245,196,81,0.72); }
+    .bars.bad i{ background: rgba(255,92,122,0.70); }
+
+    .toast{
+      position:absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: min(820px, calc(100% - 28px));
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: rgba(10,12,18,0.58);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      color: var(--muted);
+      font-size: 12px;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.35);
+      display:none;
+    }
+    .toast.show{ display:block; }
+
+    .kbd{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 11px;
+      color: rgba(231,233,234,0.82);
+      padding: 1px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.22);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="frame">
+    <header class="topbar">
+      <div class="brand" title="CamStudio Room">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <div><strong>CamStudio</strong> <span style="color:var(--muted2)">• Player</span></div>
+          <div class="sub" id="subline">Ready</div>
+        </div>
+      </div>
+
+      <div class="statusRow">
+        <span class="pill" id="pillConn"><span class="dot" id="dotConn"></span><span id="txtConn">Control: esperando</span></span>
+        <span class="pill" id="pillMode"><span class="dot" id="dotMode"></span><span id="txtMode">Modo: manual</span></span>
+        <button class="btn primary" id="btnFs" title="Fullscreen (F)"><span>⛶</span><span>Fullscreen</span></button>
+        <button class="btn" id="btnMute" title="Mute/Unmute (M)"><span>🔇</span><span id="txtMute">Mute</span></button>
+        <button class="btn danger" id="btnStop" title="Stop (S)"><span>⏹</span><span>Stop</span></button>
+      </div>
+    </header>
+
+    <main class="stage" id="stage">
+      <div class="playerArea" id="playerArea"></div>
+
+      <div class="toast" id="toast"></div>
+
+      <div class="hud">
+        <div class="card" style="min-width:min(680px,100%)">
+          <div class="nowTitle">
+            <div class="name" id="nowName">Sin señal</div>
+            <div class="meta">
+              <span class="pill" style="padding:6px 9px" id="pillLive"><span class="dot" id="dotLive"></span><span id="txtLive">OFF</span></span>
+              <span class="pill" style="padding:6px 9px"><span style="opacity:.9">KEY</span> <span class="kbd" id="txtKey">main</span></span>
+            </div>
+          </div>
+          <div class="small" id="nowMeta">Selecciona una cámara desde el panel de control.</div>
+        </div>
+
+        <div class="rightStack">
+          <div class="card">
+            <div class="signal">
+              <div style="text-align:right">
+                <div style="font-weight:730; font-size:12px; letter-spacing:.2px">Signal</div>
+                <div class="small" id="sigText">idle</div>
+              </div>
+              <div class="bars" id="sigBars"><i></i><i></i><i></i><i></i></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="small">
+              Atajos: <span class="kbd">F</span> fullscreen · <span class="kbd">M</span> mute · <span class="kbd">S</span> stop · <span class="kbd">N</span> next
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="./player.js"></script>
+</body>
+</html>

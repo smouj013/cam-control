@@ -1,0 +1,104 @@
+# readme.me — CamStudio Room (PLAYER + CONTROL)
+
+## Qué es
+Un sistema “PRO Control Room” para controlar y reproducir cámaras desde un catálogo (`cams.json`), separado en:
+
+- **player.html + player.js**: la emisión (lo que pones en OBS / pantalla principal)
+- **control.html + control.js**: el panel de control (selección, filtros, favoritos, rotación)
+- **cams.json**: fuente única de datos (cámaras)
+
+Comunicación **Control → Player** por:
+- **BroadcastChannel** (principal)
+- **localStorage** (fallback robusto)
+
+---
+
+## URLs y KEY (multi-instances)
+Ambos soportan `?key=...` para separar instancias:
+
+- Player: `player.html?key=main`
+- Control: `control.html?key=main`
+
+Si quieres otra instancia paralela:
+- `player.html?key=studio2`
+- `control.html?key=studio2`
+
+---
+
+## Formato de cams.json (schema v1)
+Cada cámara usa:
+
+- `id` *(string único, obligatorio)*
+- `title` *(string)*
+- `kind` *(youtube | hls | image)*
+- `src` *(youtube: VIDEO_ID / hls: .m3u8 / image: url)*
+- `tags` *(array de strings, opcional)*
+- `region` *(opcional)*
+- `priority` *(número, para ordenar)*
+- `disabled` *(true/false)*
+- `fallback` *(array de urls alternas para intentar si falla)*
+
+### Nota importante
+- Para **YouTube**: `kind="youtube"` y `src="VIDEO_ID"`
+- Para **HLS**: `kind="hls"` y `src="https://.../playlist.m3u8"`
+- Para **Imagen**: `kind="image"` y `src="https://...jpg/png"`
+
+---
+
+## Control Room (funciones)
+- Buscar por título/id/tags/región
+- Filtro por tipo (YouTube/HLS/Imagen)
+- Filtro por tag
+- Favoritos (★) persistentes por KEY
+- **TAKE / Play** de la selección
+- Next/Prev
+- Stop
+- Toggle mute
+- **Rotación**:
+  - intervalo en segundos
+  - filtro por tipo y/o tag
+  - botón “Rotar ahora”
+- Estado del player en tiempo real (ON-AIR, mute, fallos, error)
+
+---
+
+## Player (funciones)
+- Reproduce YouTube con IFrame API (más fiable para detectar arranque)
+- Reproduce HLS:
+  - HLS nativo si el navegador lo soporta
+  - si no, carga **hls.js** dinámicamente desde CDN
+- Imagen con health-check (onload)
+- Health-check y auto-skip en rotación si una señal no arranca
+- Overlay PRO con estado + atajos:
+  - `F` fullscreen
+  - `M` mute
+  - `S` stop
+  - `N` next (local)
+
+---
+
+## Recomendación para OBS
+- Añade un **Browser Source** apuntando a:
+  - `player.html?key=main&autoplay=1`
+- Abre `control.html?key=main` en tu navegador para manejar el directo.
+
+> Importante: Control y Player deben estar en el **mismo origen** (misma URL/base) para que BroadcastChannel funcione perfecto.  
+> El fallback de `localStorage` también necesita mismo origen.
+
+---
+
+## Sobre “que sea difícil copiar”
+No incluyo ofuscación/anti-copia intencional. Eso suele terminar rompiendo mantenimiento y no aporta seguridad real.
+Alternativas legales y útiles:
+- Añade una **licencia** (MIT/Propietaria) + aviso de copyright
+- Minifica/compila en un build (es normal en producción)
+- Si es un producto, considera autenticación/entitlements (membresía) en un backend (Cloudflare Worker, por ejemplo)
+
+---
+
+## Troubleshooting rápido
+- **YouTube no arranca**: a veces un directo expira o está geobloqueado. Cambia el `VIDEO_ID`.
+- **HLS en Chrome/Windows**: requiere hls.js (se carga solo). Si falla, revisa CORS del stream.
+- **No conecta control/player**: asegúrate de usar el mismo `key` y estar en el mismo dominio/ruta.
+
+---
