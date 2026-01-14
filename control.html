@@ -1,4 +1,4 @@
-<!-- control.html — CamStudio Room CONTROL (v1.1.0 | MULTIVIEW + CATALOG EDITOR) -->
+<!-- control.html — CamStudio Room CONTROL (v1.2.0 | HUD/FS remoto + PLAY_URL + Editor Autodetect) -->
 <!doctype html>
 <html lang="es" data-theme="dark">
 <head>
@@ -13,23 +13,29 @@
     :root{
       --bg0:#070A12;
       --bg1:#0B1328;
+
       --panel: rgba(255,255,255,0.06);
       --panel2: rgba(255,255,255,0.10);
       --stroke: rgba(255,255,255,0.14);
       --stroke2: rgba(255,255,255,0.22);
+
       --text: rgba(231,233,234,0.94);
       --muted: rgba(231,233,234,0.68);
       --muted2: rgba(231,233,234,0.52);
+
       --good:#2ED3B7;
       --warn:#F5C451;
       --bad:#FF5C7A;
       --accent:#82A6FF;
+
       --shadow: 0 18px 40px rgba(0,0,0,0.45);
       --radius: 18px;
       --radius2: 12px;
       --blur: 14px;
+
       --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     }
+
     *{ box-sizing:border-box; }
     html,body{ height:100%; }
     body{
@@ -43,6 +49,7 @@
       overflow:hidden;
     }
 
+    /* Scroll global real cuando haga falta */
     .grid{
       height:100%;
       display:grid;
@@ -50,6 +57,7 @@
       gap: 12px;
       padding: 14px;
       min-height: 0;
+      overflow:auto;
     }
 
     .topbar{
@@ -71,7 +79,7 @@
       display:flex;
       gap:10px;
       align-items:center;
-      min-width: 280px;
+      min-width: 260px;
     }
     .logo{
       width:34px;height:34px;border-radius: 11px;
@@ -79,6 +87,7 @@
       box-shadow: 0 12px 30px rgba(0,0,0,0.35);
       position:relative;
       overflow:hidden;
+      flex: 0 0 auto;
     }
     .logo:after{
       content:"";
@@ -86,7 +95,7 @@
       background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.45), transparent 55%);
       transform: rotate(18deg);
     }
-    .brand strong{ font-weight: 780; letter-spacing: .2px; }
+    .brand strong{ font-weight: 800; letter-spacing: .2px; }
     .brand .sub{ color: var(--muted2); font-size: 12px; margin-top:2px; }
 
     .pill{
@@ -135,6 +144,7 @@
       grid-template-columns: 420px 1fr;
       gap: 12px;
       min-height: 0;
+      align-items:stretch;
     }
 
     .panel{
@@ -158,9 +168,8 @@
       align-items:center;
       justify-content:space-between;
     }
-
     .panelHead .title{
-      font-weight: 760;
+      font-weight: 780;
       letter-spacing: .2px;
       display:flex; gap:10px; align-items:center;
     }
@@ -191,8 +200,11 @@
       outline:none;
       transition: border-color .18s ease, background .18s ease;
     }
-    textarea{ min-height: 110px; resize: vertical; }
-    .input:focus, select:focus, textarea:focus{ border-color: rgba(130,166,255,0.40); background: rgba(0,0,0,0.30); }
+    textarea{ min-height: 120px; resize: vertical; }
+    .input:focus, select:focus, textarea:focus{
+      border-color: rgba(130,166,255,0.40);
+      background: rgba(0,0,0,0.30);
+    }
 
     .split{
       display:grid;
@@ -217,15 +229,9 @@
       cursor:pointer;
       transition: border-color .18s ease, background .18s ease, transform .08s ease;
     }
-    .card:hover{
-      border-color: rgba(130,166,255,0.30);
-      background: rgba(0,0,0,0.26);
-    }
+    .card:hover{ border-color: rgba(130,166,255,0.30); background: rgba(0,0,0,0.26); }
     .card:active{ transform: translateY(1px); }
-    .card.active{
-      border-color: rgba(130,166,255,0.50);
-      background: rgba(130,166,255,0.10);
-    }
+    .card.active{ border-color: rgba(130,166,255,0.50); background: rgba(130,166,255,0.10); }
 
     .cardTop{
       display:flex;
@@ -235,7 +241,7 @@
     }
 
     .camTitle{
-      font-weight: 760;
+      font-weight: 800;
       letter-spacing: .2px;
       font-size: 13px;
       overflow:hidden;
@@ -243,6 +249,7 @@
       white-space:nowrap;
       max-width: 290px;
     }
+
     .badge{
       font-family: var(--mono);
       font-size: 11px;
@@ -273,71 +280,49 @@
       white-space:nowrap;
     }
 
-    /* Right panel scrollable */
+    /* Right panel */
     .rightScroll{
       overflow:auto;
       min-height: 0;
       padding: 12px;
     }
+    .big{ font-size: 14px; font-weight: 800; letter-spacing:.2px; margin:0 0 8px; }
+    .small{ color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .mono{ font-family: var(--mono); color: rgba(231,233,234,0.88); }
 
-    .big{ font-size: 14px; font-weight: 800; letter-spacing:.2px; margin:0; }
-    .sub{ color: var(--muted2); font-size: 12px; margin-top:4px; }
-
-    .kpi{
-      margin-top: 10px;
-      display:grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-    }
-    .box{
-      border: 1px solid rgba(255,255,255,0.10);
-      background: rgba(0,0,0,0.18);
-      border-radius: 14px;
-      padding: 10px;
-    }
-    .label{ color: var(--muted2); font-size: 12px; }
-    .value{ font-weight: 800; margin-top:4px; }
-
-    .mono{ font-family: var(--mono); }
-    .small{ color: var(--muted2); font-size:12px; line-height:1.35; }
-
-    .footerBtns{
+    .slotbar{
       display:flex;
-      gap: 10px;
-      flex-wrap:wrap;
-      margin-top: 10px;
-    }
-
-    .slotBar{
-      display:flex;
-      flex-wrap:wrap;
       gap:8px;
-      align-items:center;
+      flex-wrap:wrap;
     }
-    .slotBtn{
-      border: 1px solid rgba(255,255,255,0.14);
-      background: rgba(0,0,0,0.18);
+    .slotbtn{
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(0,0,0,0.20);
+      color: var(--text);
+      border-radius: 12px;
       padding: 7px 10px;
-      border-radius: 999px;
       font-size: 12px;
       cursor:pointer;
       user-select:none;
     }
-    .slotBtn.active{
-      border-color: rgba(130,166,255,0.45);
+    .slotbtn.active{
+      border-color: rgba(130,166,255,0.55);
       background: rgba(130,166,255,0.16);
     }
 
-    @media (max-width: 980px){
+    .footerBtns{ display:flex; gap:10px; flex-wrap:wrap; }
+
+    @media (max-width: 1100px){
       .main{ grid-template-columns: 1fr; }
+      .brand{ min-width: 0; }
     }
   </style>
 </head>
 
 <body>
   <div class="grid">
-    <header class="topbar">
-      <div class="brand" title="CamStudio Room">
+    <div class="topbar">
+      <div class="brand">
         <div class="logo" aria-hidden="true"></div>
         <div>
           <div><strong>CamStudio</strong> <span style="color:var(--muted2)">• Control</span></div>
@@ -346,46 +331,23 @@
       </div>
 
       <div class="row" style="justify-content:flex-end">
-        <span class="pill"><span style="opacity:.85">KEY</span> <span class="mono" id="txtKey">main</span></span>
-        <span class="pill"><span class="dot warn" id="dotPlayer"></span><span id="txtPlayer">Player: desconectado</span></span>
-
-        <button class="btn" id="btnPing">📡 Ping</button>
-        <button class="btn" id="btnReloadCams">↻ Reload catálogo</button>
+        <span class="pill"><span class="dot" id="dotPlayer"></span><span id="txtPlayer">Player: esperando</span></span>
+        <span class="pill"><span class="dot" id="dotMode"></span><span id="txtMode">Modo: manual</span></span>
+        <span class="pill"><span style="opacity:.9">KEY</span> <span class="mono" id="txtKey">main</span></span>
+        <button class="btn ghost" id="btnPing">📡 Ping</button>
+        <button class="btn" id="btnReloadCams">↻ Recargar catálogo</button>
       </div>
-    </header>
+    </div>
 
     <div class="main">
-      <!-- Left -->
+      <!-- LEFT: catálogo -->
       <section class="panel">
         <div class="panelHead">
           <div class="title">Catálogo <span class="badge" id="txtCount">(0)</span></div>
-          <div class="hint">Filtra, selecciona y haz TAKE por slot.</div>
+          <div class="hint">Filtra y asigna a un slot</div>
         </div>
 
         <div class="controls">
-          <!-- Multiview -->
-          <div class="row" style="justify-content:space-between">
-            <span class="pill"><span class="dot" id="dotMode"></span><span id="txtMode">Modo: manual</span></span>
-            <button class="btn good" id="btnTake">🎬 TAKE (Play)</button>
-          </div>
-
-          <div class="row">
-            <span class="badge">Layout</span>
-            <button class="btn" id="btnLayout1">1</button>
-            <button class="btn" id="btnLayout2">2</button>
-            <button class="btn" id="btnLayout4">4</button>
-            <button class="btn" id="btnLayout6">6</button>
-            <button class="btn" id="btnLayout9">9</button>
-            <input class="input" id="layoutN" type="number" min="1" max="12" step="1" value="4" style="max-width:120px" />
-            <button class="btn primary" id="btnLayoutApply">Aplicar</button>
-          </div>
-
-          <div class="row" style="align-items:flex-start">
-            <span class="badge">Slot</span>
-            <div class="slotBar" id="slotBar"></div>
-          </div>
-
-          <!-- navegación por slot -->
           <div class="row">
             <button class="btn" id="btnPrev">⟵ Prev</button>
             <button class="btn" id="btnNext">Next ⟶</button>
@@ -393,193 +355,191 @@
             <button class="btn danger" id="btnStop">⛔ Stop ALL</button>
           </div>
 
-          <div class="hr"></div>
+          <div class="row">
+            <button class="btn" id="btnHud">👁 HUD: ?</button>
+            <button class="btn" id="btnFs">⛶ Fullscreen: ?</button>
+            <button class="btn" id="btnMute">🔇 Toggle mute</button>
+            <button class="btn" id="btnRotateNow">⚡ Rotar ahora</button>
+          </div>
 
-          <!-- filtros -->
-          <input class="input" id="q" placeholder="Buscar (título, id, tag, región, ciudad)" autocomplete="off" />
           <div class="split">
+            <input class="input" id="q" placeholder="Buscar (Tokyo, beach, rail…)" />
             <select id="kind">
               <option value="any">Tipo: cualquiera</option>
-              <option value="youtube">YouTube</option>
-              <option value="hls">HLS</option>
-              <option value="image">Imagen</option>
-            </select>
-            <select id="tag">
-              <option value="">Tag: (todas)</option>
+              <option value="youtube">youtube</option>
+              <option value="hls">hls</option>
+              <option value="image">image</option>
             </select>
           </div>
 
+          <div class="split">
+            <select id="tag">
+              <option value="">Tag: cualquiera</option>
+            </select>
+            <button class="btn" id="btnFavOnly">★ Fav: OFF</button>
+          </div>
+
           <div class="row">
-            <button class="btn" id="btnFavOnly">★ Solo favs</button>
-            <button class="btn" id="btnClear">✕ Limpiar</button>
+            <button class="btn primary" id="btnTake">▶ TAKE (slot activo)</button>
+            <button class="btn" id="btnClear">🧹 Limpiar</button>
           </div>
 
           <div class="hr"></div>
 
-          <!-- rotación (aplica al slot activo) -->
-          <div class="split">
-            <select id="rotKind">
-              <option value="any">Rotación: cualquier tipo</option>
-              <option value="youtube">Rotación: YouTube</option>
-              <option value="hls">Rotación: HLS</option>
-              <option value="image">Rotación: Imagen</option>
-            </select>
-            <input class="input" id="rotSec" type="number" min="8" max="3600" step="1" value="40" />
+          <div class="row">
+            <button class="btn" id="btnLayout1">1</button>
+            <button class="btn" id="btnLayout2">2</button>
+            <button class="btn" id="btnLayout4">4</button>
+            <button class="btn" id="btnLayout6">6</button>
+            <button class="btn" id="btnLayout9">9</button>
+            <input class="input" id="layoutN" placeholder="Custom N (1..12)" style="max-width:140px" />
+            <button class="btn" id="btnLayoutApply">Aplicar</button>
           </div>
 
           <div class="row">
-            <select id="rotTag">
-              <option value="">Rotación tag: (sin filtro)</option>
-            </select>
-            <button class="btn primary" id="btnRotate">⟲ Rotación</button>
+            <div class="small" style="min-width:90px">Slot activo:</div>
+            <div class="slotbar" id="slotBar"></div>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="row">
+            <input class="input" id="quickUrl" placeholder="Pega URL (YouTube / .m3u8 / imagen) → PLAY al slot activo" />
+          </div>
+          <div class="row">
+            <button class="btn good" id="btnPlayUrl">▶ PLAY URL</button>
+            <button class="btn" id="btnFillFromUrl">✳ Autocompletar editor</button>
           </div>
         </div>
 
         <div class="list" id="list"></div>
       </section>
 
-      <!-- Right -->
+      <!-- RIGHT: detalle + editor -->
       <section class="panel">
         <div class="panelHead">
-          <div class="title">Programa + Editor</div>
-          <div class="hint">Estado del player + editar cams.json (override + export).</div>
+          <div class="title">Detalle / Editor</div>
+          <div class="hint">Override local + export</div>
         </div>
 
         <div class="rightScroll">
-          <!-- Programa -->
-          <div>
-            <p class="big" id="progTitle">Programa: —</p>
-            <div class="sub" id="progSub">Esperando estado del player…</div>
+          <h3 class="big" id="selTitle">Selecciona una cámara</h3>
+          <div class="small" id="selMeta">Haz click en una tarjeta del catálogo para ver detalles.</div>
 
-            <div class="kpi">
-              <div class="box">
-                <div class="label">Estado</div>
-                <div class="value" id="kpiState">—</div>
-              </div>
-              <div class="box">
-                <div class="label">Mute</div>
-                <div class="value" id="kpiMute">—</div>
-              </div>
-              <div class="box">
-                <div class="label">Fails</div>
-                <div class="value" id="kpiFails">—</div>
-              </div>
-            </div>
+          <div class="hr"></div>
 
-            <div class="row" style="margin-top:10px">
-              <button class="btn" id="btnMute">🔇 Toggle mute</button>
-              <button class="btn" id="btnRotateNow">⚡ Rotar ahora</button>
-            </div>
+          <div class="small" style="display:grid; gap:6px">
+            <div><b>ID:</b> <span class="mono" id="selId">—</span></div>
+            <div><b>Tipo:</b> <span class="mono" id="selKind">—</span></div>
+            <div><b>Src:</b> <span class="mono" id="selSrc">—</span></div>
+            <div><b>Tags:</b> <span class="mono" id="selTags">—</span></div>
+            <div><b>Región:</b> <span class="mono" id="selRegion">—</span></div>
+            <div><b>Ciudad:</b> <span class="mono" id="selCity">—</span></div>
+            <div><b>País:</b> <span class="mono" id="selCountry">—</span></div>
+            <div><b>Continente:</b> <span class="mono" id="selContinent">—</span></div>
+            <div><b>Timezone:</b> <span class="mono" id="selTz">—</span></div>
+            <div><b>Lat/Lon:</b> <span class="mono" id="selLatLon">—</span></div>
           </div>
 
           <div class="hr"></div>
 
-          <!-- Detalle selección -->
-          <div>
-            <h3 id="selTitle" style="margin:0 0 6px 0">Selecciona una cámara</h3>
-            <div class="small" id="selMeta">Haz click en una tarjeta del catálogo para ver detalles.</div>
-
-            <div class="hr"></div>
-
-            <div class="small">
-              <div><b>ID:</b> <span class="mono" id="selId">—</span></div>
-              <div><b>Tipo:</b> <span class="mono" id="selKind">—</span></div>
-              <div><b>Src:</b> <span class="mono" id="selSrc">—</span></div>
-              <div><b>Tags:</b> <span class="mono" id="selTags">—</span></div>
-              <div><b>Región:</b> <span class="mono" id="selRegion">—</span></div>
-              <div><b>Ciudad:</b> <span class="mono" id="selCity">—</span></div>
-              <div><b>País:</b> <span class="mono" id="selCountry">—</span></div>
-              <div><b>Continente:</b> <span class="mono" id="selContinent">—</span></div>
-              <div><b>TZ:</b> <span class="mono" id="selTz">—</span></div>
-              <div><b>Lat/Lon:</b> <span class="mono" id="selLatLon">—</span></div>
-            </div>
-
-            <div class="footerBtns">
-              <button class="btn good" id="btnPlaySel">▶ Play selección</button>
-              <button class="btn" id="btnFav">★ Fav</button>
-              <button class="btn" id="btnCopyId">⧉ Copiar ID</button>
-              <button class="btn" id="btnEditFromSel">✎ Editar</button>
-            </div>
+          <div class="footerBtns">
+            <button class="btn good" id="btnPlaySel">▶ Play selección</button>
+            <button class="btn" id="btnFav">★ Fav</button>
+            <button class="btn" id="btnCopyId">⧉ Copiar ID</button>
+            <button class="btn" id="btnEditFromSel">✎ Editar</button>
           </div>
 
           <div class="hr"></div>
 
-          <!-- Editor catálogo -->
-          <div>
-            <p class="big" style="margin-bottom:6px">Editor de catálogo (override + export)</p>
-            <div class="small">En GitHub Pages no se puede “escribir” el archivo en el servidor. Aquí lo guardas como <b>override local</b> (player/control lo usan) y puedes <b>exportar</b> el JSON para reemplazar <span class="mono">cams.json</span> en tu repo.</div>
+          <p class="big" style="margin-bottom:6px">Editor de catálogo (override + export)</p>
+          <div class="small">
+            En GitHub Pages no se puede escribir el archivo en servidor. Aquí guardas un <b>override local</b> (player/control lo usan)
+            y luego <b>exportas</b> el JSON para reemplazar <span class="mono">cams.json</span> en tu repo.
+          </div>
 
-            <div class="row" style="margin-top:10px">
-              <button class="btn" id="btnNewCam">➕ Nueva</button>
-              <button class="btn primary" id="btnSaveCam">💾 Guardar</button>
-              <button class="btn danger" id="btnDeleteCam">🗑 Borrar</button>
-            </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="btnNewCam">➕ Nueva</button>
+            <button class="btn primary" id="btnSaveCam">💾 Guardar</button>
+            <button class="btn danger" id="btnDeleteCam">🗑 Borrar</button>
+          </div>
 
-            <div class="split" style="margin-top:10px">
-              <input class="input" id="edId" placeholder="id (único)" />
-              <input class="input" id="edTitle" placeholder="title" />
-            </div>
+          <div class="split" style="margin-top:10px">
+            <input class="input" id="edId" placeholder="id (único)" />
+            <input class="input" id="edTitle" placeholder="title" />
+          </div>
 
-            <div class="split" style="margin-top:10px">
-              <select id="edKind">
-                <option value="youtube">youtube</option>
-                <option value="hls">hls</option>
-                <option value="image">image</option>
-              </select>
-              <input class="input" id="edSrc" placeholder="src (YT id / url HLS / url imagen)" />
-            </div>
+          <div class="row" style="margin-top:10px">
+            <input class="input" id="edUrl" placeholder="Pega URL (YouTube / .m3u8 / imagen) → detecta tipo + src" />
+          </div>
 
-            <div class="split" style="margin-top:10px">
-              <input class="input" id="edRegion" placeholder="region (ISO, ej ES/US/JP)" />
-              <input class="input" id="edTags" placeholder="tags (coma) ej: city,beach,news" />
-            </div>
+          <div class="split" style="margin-top:10px">
+            <select id="edKind">
+              <option value="youtube">youtube</option>
+              <option value="hls">hls</option>
+              <option value="image">image</option>
+            </select>
+            <input class="input" id="edSrc" placeholder="src (YT id / url HLS / url imagen)" />
+          </div>
 
-            <div class="split" style="margin-top:10px">
-              <input class="input" id="edCity" placeholder="city" />
-              <input class="input" id="edCountry" placeholder="country (nombre)" />
-            </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="btnParseUrl">✳ Detectar URL → kind/src</button>
+            <button class="btn" id="btnGeocode">🧭 Geocode (Open-Meteo)</button>
+          </div>
 
-            <div class="split" style="margin-top:10px">
-              <input class="input" id="edContinent" placeholder="continent (Europa/Asia/...)" />
-              <input class="input" id="edTz" placeholder="tz (IANA) ej: Europe/Madrid" />
-            </div>
+          <div class="split" style="margin-top:10px">
+            <input class="input" id="edRegion" placeholder="region (ISO, ej: ES, US)" />
+            <input class="input" id="edTags" placeholder="tags (coma), ej: city,news,night" />
+          </div>
 
-            <div class="split" style="margin-top:10px">
-              <input class="input" id="edLat" placeholder="lat" />
-              <input class="input" id="edLon" placeholder="lon" />
-            </div>
+          <div class="split" style="margin-top:10px">
+            <input class="input" id="edCity" placeholder="city" />
+            <input class="input" id="edCountry" placeholder="country" />
+          </div>
 
-            <div class="split" style="margin-top:10px">
-              <input class="input" id="edPriority" placeholder="priority (0..100)" />
-              <input class="input" id="edWeight" placeholder="weight (1..)" />
-            </div>
+          <div class="split" style="margin-top:10px">
+            <input class="input" id="edContinent" placeholder="continent" />
+            <input class="input" id="edTz" placeholder="tz (ej: Europe/Madrid)" />
+          </div>
 
-            <div class="row" style="margin-top:10px">
-              <button class="btn" id="btnGeocode">📍 Geocodificar (OSM)</button>
-              <button class="btn" id="btnClearOverride">♻️ Quitar override</button>
-            </div>
+          <div class="split" style="margin-top:10px">
+            <input class="input" id="edLat" placeholder="lat" />
+            <input class="input" id="edLon" placeholder="lon" />
+          </div>
 
-            <div class="row" style="margin-top:10px">
-              <button class="btn" id="btnExportJson">⬇ Export JSON</button>
-              <button class="btn" id="btnCopyJson">⧉ Copiar JSON</button>
-              <input class="input" id="fileImport" type="file" accept=".json,application/json" />
-            </div>
+          <div class="split" style="margin-top:10px">
+            <input class="input" id="edPriority" placeholder="priority (0..100)" />
+            <input class="input" id="edWeight" placeholder="weight (1..)" />
+          </div>
 
-            <div class="row" style="margin-top:10px">
-              <textarea id="txtJson" placeholder="(Opcional) pega aquí un JSON completo para importar…"></textarea>
-              <button class="btn primary" id="btnImportJson">Importar</button>
-            </div>
+          <div class="hr"></div>
 
-            <div class="hr"></div>
-            <div class="small">
-              Consejos: abre el player en OBS con <span class="badge">player.html?key=main&layout=6</span> y controla con <span class="badge">control.html?key=main</span>.
-            </div>
+          <div class="row">
+            <button class="btn danger" id="btnClearOverride">🧨 Borrar override local</button>
+          </div>
+
+          <div class="hr"></div>
+
+          <p class="big" style="margin-bottom:6px">Export / Import JSON</p>
+          <div class="row">
+            <button class="btn" id="btnExportJson">⬇ Export</button>
+            <button class="btn" id="btnCopyJson">⧉ Copy</button>
+            <input type="file" id="fileImport" accept=".json,application/json" style="max-width:220px" />
+            <button class="btn" id="btnImportJson">⬆ Import</button>
+          </div>
+          <textarea id="txtJson" placeholder="Aquí verás el JSON exportado o pega uno para importar…"></textarea>
+
+          <div class="hr"></div>
+
+          <div class="small">
+            Consejos: abre el player en OBS con <span class="badge">player.html?key=main</span> y controla desde aquí con <span class="badge">control.html?key=main</span>.
           </div>
         </div>
       </section>
     </div>
   </div>
 
-  <script src="./control.js?v=camstudio-1.1.0-2026-01-14" defer></script>
+  <!-- Cache-bust -->
+  <script src="./control.js?v=camstudio-1.2.0-2026-01-14" defer></script>
 </body>
 </html>

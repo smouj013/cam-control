@@ -1,4 +1,4 @@
-<!-- player.html — CamStudio Room PLAYER (v1.1.0 | MULTIVIEW) -->
+<!-- player.html — CamStudio Room PLAYER (v1.2.0 | MULTIVIEW + HUD REMOTO) -->
 <!doctype html>
 <html lang="es" data-theme="dark">
 <head>
@@ -13,21 +13,29 @@
     :root{
       --bg0:#070A12;
       --bg1:#0A1226;
+
       --panel: rgba(255,255,255,0.06);
       --panel2: rgba(255,255,255,0.10);
       --stroke: rgba(255,255,255,0.14);
       --stroke2: rgba(255,255,255,0.22);
+
       --text: rgba(231,233,234,0.94);
       --muted: rgba(231,233,234,0.68);
       --muted2: rgba(231,233,234,0.52);
+
       --good:#2ED3B7;
       --warn:#F5C451;
       --bad:#FF5C7A;
       --accent:#82A6FF;
+
       --shadow: 0 18px 40px rgba(0,0,0,0.45);
       --radius: 18px;
       --radius2: 12px;
       --blur: 14px;
+
+      /* HUD scaling (player.js lo ajusta según layout) */
+      --hudScale: 0.96;
+      --tileHudScale: 0.92;
     }
 
     *{ box-sizing:border-box; }
@@ -51,6 +59,7 @@
       display:grid;
       grid-template-rows: auto 1fr;
       gap: 12px;
+      min-height:0;
     }
 
     .topbar{
@@ -64,7 +73,8 @@
       box-shadow: var(--shadow);
       backdrop-filter: blur(var(--blur));
       -webkit-backdrop-filter: blur(var(--blur));
-      min-height: 56px;
+      min-height: 58px;
+      gap: 10px;
     }
 
     .brand{
@@ -79,6 +89,7 @@
       box-shadow: 0 12px 30px rgba(0,0,0,0.35);
       position:relative;
       overflow:hidden;
+      flex: 0 0 auto;
     }
     .logo:after{
       content:"";
@@ -86,7 +97,7 @@
       background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.45), transparent 55%);
       transform: rotate(18deg);
     }
-    .brand strong{ font-weight: 760; letter-spacing: 0.2px; }
+    .brand strong{ font-weight: 780; letter-spacing: 0.2px; }
     .brand .sub{ color: var(--muted2); font-size: 12px; margin-top:2px; }
 
     .statusRow{
@@ -132,14 +143,8 @@
     }
     .btn:hover{ background: rgba(255,255,255,0.10); border-color: var(--stroke2); }
     .btn:active{ transform: translateY(1px); }
-    .btn.primary{
-      border-color: rgba(130,166,255,0.35);
-      background: rgba(130,166,255,0.14);
-    }
-    .btn.danger{
-      border-color: rgba(255,92,122,0.35);
-      background: rgba(255,92,122,0.12);
-    }
+    .btn.primary{ border-color: rgba(130,166,255,0.35); background: rgba(130,166,255,0.14); }
+    .btn.danger{ border-color: rgba(255,92,122,0.35); background: rgba(255,92,122,0.12); }
 
     .stage{
       position:relative;
@@ -148,8 +153,7 @@
       background: rgba(0,0,0,0.30);
       box-shadow: var(--shadow);
       overflow:hidden;
-      display:grid;
-      place-items:stretch;
+      min-height:0;
     }
 
     /* MULTIVIEW GRID */
@@ -159,11 +163,6 @@
       gap: 10px;
       padding: 10px;
     }
-    .gridArea.layout-1{ grid-template-columns: 1fr; grid-template-rows: 1fr; }
-    .gridArea.layout-2{ grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
-    .gridArea.layout-4{ grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
-    .gridArea.layout-6{ grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
-    .gridArea.layout-9{ grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; }
 
     .tile{
       position:relative;
@@ -207,46 +206,38 @@
       justify-content:space-between;
       gap:10px;
       pointer-events:none;
+      transform: scale(var(--tileHudScale));
+      transform-origin: bottom left;
     }
 
     .tileCard{
       pointer-events:none;
-      max-width: 76%;
-      padding: 10px 10px;
+      max-width: 82%;
+      padding: 9px 10px;
       border-radius: 14px;
       border: 1px solid rgba(255,255,255,0.12);
       background: rgba(10,12,18,0.50);
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
     }
-
-    .tileTopRow{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      margin-bottom: 6px;
-    }
-
     .tileTitle{
       font-weight: 780;
       letter-spacing: 0.2px;
-      font-size: 13px;
+      font-size: 12.5px;
       overflow:hidden;
       text-overflow:ellipsis;
       white-space:nowrap;
       max-width: 100%;
+      margin-bottom: 6px;
     }
-
     .tileMeta{
       color: var(--muted);
-      font-size: 12px;
+      font-size: 11.5px;
       line-height: 1.35;
       display:flex;
       flex-wrap:wrap;
-      gap:8px;
+      gap:6px;
     }
-
     .badge{
       display:inline-flex;
       align-items:center;
@@ -276,6 +267,7 @@
     }
     .toast.show{ display:block; }
 
+    /* Global HUD (slot activo) */
     .hud{
       position:absolute;
       left: 14px;
@@ -287,8 +279,9 @@
       gap: 10px;
       pointer-events:none;
       z-index: 20;
+      transform: scale(var(--hudScale));
+      transform-origin: bottom left;
     }
-
     .card{
       pointer-events:auto;
       max-width: min(680px, 100%);
@@ -300,71 +293,57 @@
       -webkit-backdrop-filter: blur(16px);
       box-shadow: 0 12px 30px rgba(0,0,0,0.35);
     }
-
     .nowTitle{
       display:flex;
-      align-items:center;
+      align-items:flex-start;
       justify-content:space-between;
       gap:10px;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
-    .nowTitle .name{
-      font-weight: 740;
-      letter-spacing: 0.2px;
+    .name{
+      font-weight: 820;
+      letter-spacing: .2px;
       font-size: 14px;
       overflow:hidden;
       text-overflow:ellipsis;
       white-space:nowrap;
+      max-width: 100%;
     }
-    .nowTitle .meta{
-      display:flex; gap:8px; align-items:center;
-      color: var(--muted);
-      font-size: 12px;
-      white-space:nowrap;
-    }
-
-    .small{
-      color: var(--muted2);
-      font-size: 12px;
-      line-height: 1.35;
-    }
-
-    .rightStack{
+    .meta{
       display:flex;
-      flex-direction:column;
       gap:8px;
-      align-items:flex-end;
-      min-width: 220px;
+      align-items:center;
+      flex-wrap:wrap;
+      justify-content:flex-end;
     }
+    .small{ color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .rightStack{ display:flex; flex-direction:column; gap:10px; align-items:flex-end; }
 
     .signal{
       display:flex;
-      gap: 10px;
+      gap:12px;
       align-items:center;
-      justify-content:flex-end;
+      justify-content:space-between;
+      min-width: 240px;
     }
-
     .bars{
       display:flex;
-      gap: 3px;
+      gap:4px;
       align-items:flex-end;
-      height: 14px;
-      padding: 0 2px;
     }
     .bars i{
-      width: 4px;
-      border-radius: 3px;
-      background: rgba(231,233,234,0.26);
-      display:block;
+      width:6px;
+      height: 10px;
+      border-radius: 6px;
+      background: rgba(231,233,234,0.22);
     }
-    .bars i:nth-child(1){ height: 6px; }
-    .bars i:nth-child(2){ height: 9px; }
-    .bars i:nth-child(3){ height: 12px; }
-    .bars i:nth-child(4){ height: 14px; }
+    .bars i:nth-child(2){ height: 14px; }
+    .bars i:nth-child(3){ height: 18px; }
+    .bars i:nth-child(4){ height: 22px; }
 
     .bars.good i{ background: rgba(46,211,183,0.65); }
     .bars.warn i{ background: rgba(245,196,81,0.65); }
-    .bars.bad i{ background: rgba(255,92,122,0.75); }
+    .bars.bad  i{ background: rgba(255,92,122,0.75); }
 
     .kbd{
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
@@ -374,6 +353,19 @@
       border-radius: 999px;
       border: 1px solid rgba(255,255,255,0.18);
       background: rgba(0,0,0,0.22);
+    }
+
+    /* HUD hidden (remoto) */
+    html.hud-hidden .hud,
+    html.hud-hidden .tileHud{
+      display:none !important;
+    }
+
+    @media (max-width: 860px){
+      .brand{ min-width: 0; }
+      .signal{ min-width: 0; }
+      .hud{ gap: 8px; }
+      .rightStack{ display:none; }
     }
   </style>
 </head>
@@ -399,13 +391,11 @@
     </header>
 
     <main class="stage" id="stage">
-      <!-- MULTIVIEW container -->
-      <div class="gridArea layout-1" id="playerArea"></div>
-
+      <div class="gridArea" id="playerArea"></div>
       <div class="toast" id="toast"></div>
 
-      <!-- Global HUD (muestra slot activo) -->
-      <div class="hud">
+      <!-- Global HUD (slot activo) -->
+      <div class="hud" id="hud">
         <div class="card" style="min-width:min(680px,100%)">
           <div class="nowTitle">
             <div class="name" id="nowName">Sin señal</div>
@@ -429,7 +419,7 @@
           </div>
           <div class="card">
             <div class="small">
-              Atajos: <span class="kbd">1..9</span> slot · <span class="kbd">F</span> fullscreen · <span class="kbd">M</span> mute · <span class="kbd">S</span> stop · <span class="kbd">N</span> next
+              Atajos: <span class="kbd">1..9</span> slot · <span class="kbd">H</span> HUD · <span class="kbd">F</span> fullscreen · <span class="kbd">M</span> mute · <span class="kbd">S</span> stop · <span class="kbd">N</span> next
             </div>
           </div>
         </div>
@@ -438,6 +428,6 @@
   </div>
 
   <!-- Cache-bust -->
-  <script src="./player.js?v=camstudio-1.1.0-2026-01-14" defer></script>
+  <script src="./player.js?v=camstudio-1.2.0-2026-01-14" defer></script>
 </body>
 </html>

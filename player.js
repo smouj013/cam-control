@@ -1,24 +1,26 @@
-/* player.js — CamStudio Room PLAYER (v1.1.0 | MULTIVIEW + GEO/TIME/WEATHER)
-   ✅ Multiview: 1/2/4/6/9 + custom
-   ✅ Slots independientes (PLAY por slot, no pisa los demás)
+/* player.js — CamStudio Room PLAYER (v1.2.0 | MULTIVIEW + HUD REMOTO + PLAY_URL)
+   ✅ Multiview: 1/2/4/6/9 + custom N (hasta 12)
+   ✅ Slots independientes (PLAY por slot)
+   ✅ HUD: ON/OFF remoto (CMD HUD_SET)
+   ✅ Fullscreen remoto (CMD FULLSCREEN_SET) best-effort (por gesto del navegador)
+   ✅ PLAY_URL: pegar URL (YouTube / HLS / imagen) y reproducir sin tocar catálogo
    ✅ Hora local (si hay tz) + clima (si hay lat/lon, Open-Meteo)
-   ✅ Catálogo override (localStorage) + fallback a ./cams.json
-   ✅ Compat: acepta comandos antiguos (PLAY_ID/NEXT/PREV/STOP)
+   ✅ Override de catálogo (localStorage) + fallback a ./cams.json
+   ✅ Compat: comandos antiguos (PLAY_ID/NEXT/PREV/STOP/LAYOUT/SLOT/MUTE)
 */
 (() => {
   "use strict";
 
   const APP = {
     name: "CamStudioRoom",
-    ver: "1.1.0",
+    ver: "1.2.0",
     protocol: 1,
     camsUrl: "./cams.json",
   };
 
-  // Helpers
   const $ = (id) => document.getElementById(id);
+  const nowMs = () => Number(Date.now());
   const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
-  const nowMs = () => Number(Date.now()); // no bitwise
 
   const randId = (len = 12) => {
     const a = new Uint8Array(len);
@@ -27,20 +29,16 @@
     return [...a].map(x => (x % 36).toString(36)).join("");
   };
 
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
   function parseParams() {
     const qp = new URLSearchParams(location.search);
     const key = (qp.get("key") || "main").trim() || "main";
     const autoplay = qp.get("autoplay") === "1";
-    const startId = (qp.get("id") || "").trim(); // slot activo
     const mute = qp.get("mute") === "1";
-    const mode = (qp.get("mode") || "").trim(); // manual | rotate
-    const tag = (qp.get("tag") || "").trim();
     const layout = clamp(parseInt(qp.get("layout") || "1", 10) || 1, 1, 12);
-    return { key, autoplay, startId, mute, mode, tag, layout };
+    const hud = qp.get("hud"); // "0" / "1"
+    const hudVisible = (hud === null) ? true : (hud !== "0");
+    return { key, autoplay, mute, layout, hudVisible };
   }
-
   const P = parseParams();
 
   // UI
@@ -70,7 +68,6 @@
     txtMute: $("txtMute"),
     btnStop: $("btnStop"),
   };
-
   UI.txtKey.textContent = P.key;
 
   const UI_MUTE_ICON = UI.btnMute?.querySelector("span") || null;
@@ -104,10 +101,11 @@
     UI.sigText.textContent = text || "idle";
   }
 
-  // Message bus
+  // Bus + storage
   const BUS_NAME = "camstudio_bus";
   const LS_CMD = `camstudio_cmd:${P.key}`;
   const LS_STATE = `camstudio_state:${P.key}`;
+  const LS_ACK = `camstudio_ack:${P.key}`;
   const LS_LAST = `camstudio_last:${P.key}`;
   const LS_CAMS_OVERRIDE = `camstudio_cams_override:${P.key}`;
 
@@ -119,11 +117,32 @@
     const t = seen.get(nonce);
     if (t && Math.abs(ts - t) < 30_000) return true;
     seen.set(nonce, ts);
-    if (seen.size > 300) {
+    if (seen.size > 400) {
       const cut = nowMs() - 60_000;
       for (const [k, v] of seen) if (v < cut) seen.delete(k);
     }
     return false;
+  }
+
+  function emit(type, payload) {
+    try { bc?.postMessage(payload); } catch {}
+    try {
+      const key = (type === "STATE") ? LS_STATE : (type === "ACK" ? LS_ACK : null);
+      if (key) localStorage.setItem(key, JSON.stringify(payload));
+    } catch {}
+  }
+
+  function sendACK(cmdNonce, cmd, ok = true, note = "") {
+    const payload = {
+      v: APP.protocol,
+      key: P.key,
+      ts: nowMs(),
+      nonce: randId(12),
+      from: "player",
+      type: "ACK",
+      ack: { cmdNonce: String(cmdNonce || ""), cmd: String(cmd || ""), ok: !!ok, note: String(note || "") }
+    };
+    emit("ACK", payload);
   }
 
   // Catalog
@@ -137,9 +156,52 @@
       const cams = Array.isArray(json?.cams) ? json.cams : null;
       if (!cams) return null;
       return json;
-    } catch {
-      return null;
+    } catch { return null; }
+  }
+
+  function extractYouTubeId(input) {
+    const s = String(input || "").trim();
+    if (!s) return "";
+    // raw ID
+    if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
+
+    let u = null;
+    try { u = new URL(s); } catch { u = null; }
+    if (!u) return "";
+
+    const host = (u.hostname || "").replace(/^www\./, "");
+    if (host === "youtu.be") {
+      const p = u.pathname.replace(/\//g, "").trim();
+      return (/^[a-zA-Z0-9_-]{11}$/.test(p)) ? p : "";
     }
+    if (host.endsWith("youtube.com") || host.endsWith("youtube-nocookie.com")) {
+      // watch?v=
+      const v = u.searchParams.get("v");
+      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+
+      // /embed/ID  /shorts/ID /live/ID
+      const m = u.pathname.match(/\/(embed|shorts|live)\/([a-zA-Z0-9_-]{11})/);
+      if (m && m[2]) return m[2];
+    }
+    return "";
+  }
+
+  function guessKindFromUrl(url) {
+    const s = String(url || "").trim();
+    if (!s) return { kind: "", src: "" };
+
+    const yt = extractYouTubeId(s);
+    if (yt) return { kind: "youtube", src: yt };
+
+    // hls
+    if (/\.m3u8(\?|#|$)/i.test(s)) return { kind: "hls", src: s };
+
+    // image
+    if (/\.(png|jpe?g|webp|gif)(\?|#|$)/i.test(s)) return { kind: "image", src: s };
+
+    // si es URL pero no sabemos, lo tratamos como HLS si parece stream
+    if (/^https?:\/\//i.test(s)) return { kind: "hls", src: s };
+    return { kind: "", src: "" };
   }
 
   function normalizeCamObj(c) {
@@ -147,11 +209,20 @@
     if (c.disabled) return null;
 
     const id = String(c.id || "").trim();
-    const kind = String(c.kind || "").trim();
-    const src = String(c.src || "").trim();
+    let kind = String(c.kind || "").trim();
+    let src = String(c.src || "").trim();
     if (!id || !kind || !src) return null;
 
-    const tags = Array.isArray(c.tags) ? c.tags.map(String).filter(Boolean) : [];
+    if (kind === "youtube" && !/^[a-zA-Z0-9_-]{11}$/.test(src)) {
+      const yid = extractYouTubeId(src);
+      if (yid) src = yid;
+    }
+    if (!["youtube","hls","image"].includes(kind)) {
+      // compat (si vienen cosas raras)
+      const g = guessKindFromUrl(src);
+      kind = g.kind || kind;
+      src = g.src || src;
+    }
 
     const num = (v, def = null) => {
       const n = Number(v);
@@ -163,14 +234,13 @@
       title: String(c.title || id),
       kind,
       src,
-      tags,
-      region: String(c.region || ""), // ISO country code, ej: ES
+      tags: Array.isArray(c.tags) ? c.tags.map(String).filter(Boolean) : [],
+      region: String(c.region || ""),
       priority: num(c.priority, 0) ?? 0,
       weight: num(c.weight, 1) ?? 1,
       thumb: String(c.thumb || ""),
       fallback: Array.isArray(c.fallback) ? c.fallback.map(String).filter(Boolean) : [],
 
-      // NUEVO (opcional)
       city: String(c.city || ""),
       country: String(c.country || ""),
       continent: String(c.continent || ""),
@@ -180,10 +250,9 @@
     };
   }
 
-  async function loadCams({ soft = false } = {}) {
+  async function loadCams() {
     UI.subline.textContent = "Cargando catálogo…";
     setSignal("warn", "loading catalog");
-
     try {
       const override = readOverrideCatalog();
       let json = null;
@@ -197,9 +266,7 @@
       }
 
       const cams = Array.isArray(json?.cams) ? json.cams : (Array.isArray(json) ? json : []);
-      const meta = json?.meta || {};
       const clean = [];
-
       for (const c of cams) {
         const cam = normalizeCamObj(c);
         if (!cam) continue;
@@ -209,15 +276,15 @@
       clean.sort((a, b) => (b.priority - a.priority) || a.title.localeCompare(b.title));
       CATALOG.list = clean;
       CATALOG.byId = new Map(clean.map(c => [c.id, c]));
-      CATALOG.meta = meta;
+      CATALOG.meta = json?.meta || {};
 
       UI.subline.textContent = `Catálogo listo • ${clean.length} cams${override ? " (override)" : ""}`;
       setSignal("good", "catalog OK");
       return true;
-    } catch (err) {
-      UI.subline.textContent = soft ? "Catálogo previo (fallback)" : "Error cargando catálogo";
+    } catch (e) {
+      UI.subline.textContent = "Error cargando catálogo";
       setSignal("bad", "catalog failed");
-      console.warn("[player] loadCams failed:", err);
+      console.warn("[player] loadCams failed", e);
       return false;
     }
   }
@@ -227,7 +294,6 @@
     try { return new Intl.DisplayNames(["es"], { type: "region" }); } catch { return null; }
   })();
 
-  // mapping mínimo (puedes ampliarlo cuando quieras)
   const COUNTRY_TO_CONT = {
     ES: "Europa", PT: "Europa", FR: "Europa", IT: "Europa", DE: "Europa", UK: "Europa", IE: "Europa", NL: "Europa", BE: "Europa",
     US: "Norteamérica", CA: "Norteamérica", MX: "Norteamérica",
@@ -240,11 +306,8 @@
   function inferCityFromTitle(title) {
     const t = String(title || "");
     const parts = t.split("•").map(s => s.trim()).filter(Boolean);
-    if (!parts.length) return "";
-    // "Tokyo • Shibuya Crossing" => city "Tokyo"
     return parts[0] || "";
   }
-
   function countryNameFromRegion(region) {
     const r = String(region || "").toUpperCase().trim();
     if (!r) return "";
@@ -253,25 +316,20 @@
     }
     return r;
   }
-
   function continentFromCam(cam) {
     if (cam.continent) return cam.continent;
     const r = String(cam.region || "").toUpperCase().trim();
     return COUNTRY_TO_CONT[r] || "";
   }
-
   function formatLocalTime(tz) {
     const z = String(tz || "").trim();
     if (!z) return "";
     try {
       const d = new Date();
       return new Intl.DateTimeFormat("es-ES", {
-        timeZone: z,
-        hour: "2-digit", minute: "2-digit", second: "2-digit",
+        timeZone: z, hour: "2-digit", minute: "2-digit", second: "2-digit",
       }).format(d);
-    } catch {
-      return "";
-    }
+    } catch { return ""; }
   }
 
   // Weather (Open-Meteo)
@@ -279,18 +337,15 @@
     cache: new Map(), // key -> { ts, data }
     async get(lat, lon) {
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-
       const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
       const hit = this.cache.get(key);
-      if (hit && (nowMs() - hit.ts) < 10 * 60_000) return hit.data; // 10 min
+      if (hit && (nowMs() - hit.ts) < 10 * 60_000) return hit.data;
 
       try {
-        const url =
-          `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&current_weather=true&timezone=auto`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&current_weather=true&timezone=auto`;
         const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const j = await res.json();
-
         const cw = j?.current_weather;
         if (!cw) return null;
 
@@ -300,7 +355,6 @@
           code: Number.isFinite(+cw.weathercode) ? +cw.weathercode : null,
           tz: String(j?.timezone || ""),
         };
-
         this.cache.set(key, { ts: nowMs(), data });
         return data;
       } catch (e) {
@@ -313,190 +367,19 @@
   function weatherLabel(code) {
     const c = Number(code);
     if (!Number.isFinite(c)) return "";
-    // mapping simple Open-Meteo codes
-    if (c === 0) return "☀️ Despejado";
-    if (c === 1 || c === 2) return "🌤️ Poco nuboso";
-    if (c === 3) return "☁️ Nuboso";
-    if (c === 45 || c === 48) return "🌫️ Niebla";
-    if ([51,53,55,56,57].includes(c)) return "🌦️ Llovizna";
-    if ([61,63,65,66,67].includes(c)) return "🌧️ Lluvia";
-    if ([71,73,75,77].includes(c)) return "🌨️ Nieve";
-    if ([80,81,82].includes(c)) return "🌧️ Chubascos";
-    if ([95,96,99].includes(c)) return "⛈️ Tormenta";
-    return "🌡️ Meteo";
+    if (c === 0) return "☀️";
+    if (c === 1 || c === 2) return "🌤️";
+    if (c === 3) return "☁️";
+    if (c === 45 || c === 48) return "🌫️";
+    if ([51,53,55,56,57].includes(c)) return "🌦️";
+    if ([61,63,65,66,67].includes(c)) return "🌧️";
+    if ([71,73,75,77].includes(c)) return "🌨️";
+    if ([80,81,82].includes(c)) return "🌧️";
+    if ([95,96,99].includes(c)) return "⛈️";
+    return "🌡️";
   }
 
-  // Multiview State
-  const STATE = {
-    mode: "manual", // manual|rotate (aplica al slot activo)
-    rotate: { enabled: false, intervalSec: 40, kind: "any", tag: "" },
-
-    layoutN: clamp(P.layout, 1, 12),
-    activeSlot: 0,
-    lastError: "",
-    lastControlSeenAt: 0,
-
-    publicState() {
-      return {
-        app: { name: APP.name, ver: APP.ver, protocol: APP.protocol },
-        mode: this.mode,
-        rotate: { ...this.rotate },
-        layoutN: this.layoutN,
-        activeSlot: this.activeSlot,
-        muted: !!PLAY.muted,
-        lastError: String(this.lastError || ""),
-        slots: SLOTS.map(s => ({
-          id: s.cam?.id || null,
-          title: s.cam?.title || null,
-          kind: s.cam?.kind || null,
-          region: s.cam?.region || null,
-          city: s.cam?.city || inferCityFromTitle(s.cam?.title || ""),
-          tz: s.tz || s.cam?.tz || null,
-          playing: !!s.alive,
-          failCount: s.failCount || 0,
-          lastGoodAt: s.lastGoodAt || 0,
-        })),
-        seenControlAgoMs: this.lastControlSeenAt ? (nowMs() - this.lastControlSeenAt) : null,
-      };
-    }
-  };
-
-  const PLAY = {
-    muted: !!P.mute,
-    rotateTimer: 0,
-  };
-
-  function setMuted(m) {
-    PLAY.muted = !!m;
-    UI.txtMute.textContent = PLAY.muted ? "Unmute" : "Mute";
-    if (UI_MUTE_ICON) UI_MUTE_ICON.textContent = PLAY.muted ? "🔇" : "🔊";
-    for (const s of SLOTS) s.player?.setMuted(PLAY.muted);
-    emitState();
-  }
-
-  function setNowUIFromActive(extra = "") {
-    const s = SLOTS[STATE.activeSlot];
-    const cam = s?.cam || null;
-    if (!cam) {
-      UI.nowName.textContent = `Slot ${STATE.activeSlot + 1} • Sin señal`;
-      UI.nowMeta.textContent = extra || "Selecciona una cámara desde el panel de control.";
-      setLive(false);
-      return;
-    }
-    const tags = cam.tags?.length ? `#${cam.tags.join(" #")}` : "";
-    const region = cam.region ? ` · ${cam.region}` : "";
-    UI.nowName.textContent = `Slot ${STATE.activeSlot + 1} • ${cam.title || cam.id}`;
-    UI.nowMeta.textContent =
-      `${cam.kind.toUpperCase()} · ID: ${cam.id}${region}${tags ? " · " + tags : ""}${extra ? " · " + extra : ""}`;
-    setLive(!!s.alive);
-  }
-
-  // Emit state + ACK
-  function emitState(extra = {}) {
-    const payload = {
-      v: APP.protocol,
-      key: P.key,
-      ts: nowMs(),
-      nonce: randId(12),
-      from: "player",
-      type: "STATE",
-      state: { ...STATE.publicState(), ...extra }
-    };
-    try { bc?.postMessage(payload); } catch {}
-    try { localStorage.setItem(LS_STATE, JSON.stringify(payload)); } catch {}
-  }
-
-  function sendAck(cmdNonce, ok = true, note = "") {
-    emitState({ ack: { cmdNonce, ok: !!ok, note: String(note || "") } });
-  }
-
-  // Layout builder
-  let SLOTS = [];
-
-  function setGridClass(n) {
-    UI.playerArea.classList.remove("layout-1","layout-2","layout-4","layout-6","layout-9");
-    if ([1,2,4,6,9].includes(n)) UI.playerArea.classList.add(`layout-${n}`);
-    else UI.playerArea.classList.add("layout-1"); // fallback visual
-  }
-
-  function computeAutoGrid(n) {
-    const cols = Math.ceil(Math.sqrt(n));
-    const rows = Math.ceil(n / cols);
-    return { cols, rows };
-  }
-
-  function applyLayout(n) {
-    n = clamp(Number(n) || 1, 1, 12);
-    STATE.layoutN = n;
-    STATE.activeSlot = clamp(STATE.activeSlot, 0, n - 1);
-
-    UI.playerArea.innerHTML = "";
-
-    // Para layouts custom, ponemos grid "auto"
-    if (![1,2,4,6,9].includes(n)) {
-      const { cols, rows } = computeAutoGrid(n);
-      UI.playerArea.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-      UI.playerArea.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
-      UI.playerArea.classList.remove("layout-1","layout-2","layout-4","layout-6","layout-9");
-    } else {
-      UI.playerArea.style.gridTemplateColumns = "";
-      UI.playerArea.style.gridTemplateRows = "";
-      setGridClass(n);
-    }
-
-    // Reutiliza slots previos si existen
-    const old = SLOTS;
-    SLOTS = [];
-
-    for (let i = 0; i < n; i++) {
-      const tile = document.createElement("div");
-      tile.className = "tile";
-      tile.dataset.slot = String(i);
-
-      const media = document.createElement("div");
-      media.className = "tileMedia";
-
-      tile.appendChild(media);
-      UI.playerArea.appendChild(tile);
-
-      const player = new TilePlayer(i, tile, media);
-      const slot = {
-        idx: i,
-        tile,
-        player,
-        cam: null,
-        alive: false,
-        lastGoodAt: 0,
-        failCount: 0,
-        tz: "",
-      };
-
-      // si el slot existía antes, reengancha cam
-      const prev = old[i];
-      if (prev?.cam) slot.cam = prev.cam;
-      if (prev?.tz) slot.tz = prev.tz;
-
-      SLOTS.push(slot);
-    }
-
-    // stop slots antiguos extra
-    for (let i = n; i < old.length; i++) {
-      try { old[i]?.player?.stop("layout change"); } catch {}
-    }
-
-    highlightActiveSlot();
-    emitState();
-    setNowUIFromActive();
-  }
-
-  function highlightActiveSlot() {
-    for (const s of SLOTS) {
-      if (!s?.tile) continue;
-      s.tile.classList.toggle("active", s.idx === STATE.activeSlot);
-    }
-  }
-
-  // Engine: YouTube/HLS/Image por tile
+  // Libraries
   let _ytPromise = null;
   async function ensureYouTubeAPI() {
     if (window.YT && window.YT.Player) return true;
@@ -513,7 +396,7 @@
       const t0 = nowMs();
       const tick = () => {
         if (window.YT && window.YT.Player) return resolve(true);
-        if (nowMs() - t0 > 8000) return resolve(false);
+        if (nowMs() - t0 > 9000) return resolve(false);
         setTimeout(tick, 80);
       };
       tick();
@@ -539,6 +422,92 @@
     return _hlsPromise;
   }
 
+  // State
+  const STATE = {
+    layoutN: clamp(P.layout, 1, 12),
+    activeSlot: 0,
+    lastControlSeenAt: 0,
+    hudVisible: !!P.hudVisible,
+    lastError: "",
+  };
+
+  const PLAY = {
+    muted: !!P.mute,
+  };
+
+  function setHudVisible(on) {
+    STATE.hudVisible = !!on;
+    document.documentElement.classList.toggle("hud-hidden", !STATE.hudVisible);
+    emitState();
+  }
+
+  function setMuted(m) {
+    PLAY.muted = !!m;
+    UI.txtMute.textContent = PLAY.muted ? "Unmute" : "Mute";
+    if (UI_MUTE_ICON) UI_MUTE_ICON.textContent = PLAY.muted ? "🔇" : "🔊";
+
+    for (const t of TILES) t.setMuted(PLAY.muted);
+    emitState();
+  }
+
+  function setNowUIFromActive(extra = "") {
+    const s = SLOTS[STATE.activeSlot];
+    const cam = s?.cam || null;
+    if (!cam) {
+      UI.nowName.textContent = "Sin señal";
+      UI.nowMeta.textContent = extra || "Selecciona una cámara desde el panel de control.";
+      setLive(false);
+      return;
+    }
+
+    const city = cam.city || inferCityFromTitle(cam.title);
+    const country = cam.country || countryNameFromRegion(cam.region);
+    const cont = continentFromCam(cam);
+    const tz = s.tz || cam.tz || "";
+    const t = tz ? formatLocalTime(tz) : "";
+    const w = s.weather;
+    const wtxt = (w && Number.isFinite(w.temp)) ? `${weatherLabel(w.code)} ${Math.round(w.temp)}°C` : "";
+
+    UI.nowName.textContent = cam.title || cam.id;
+
+    const bits = [];
+    bits.push(`${cam.kind.toUpperCase()} · Slot ${STATE.activeSlot + 1}`);
+    const loc = [city, country].filter(Boolean).join(", ");
+    if (loc) bits.push(loc);
+    if (cont) bits.push(cont);
+    if (t) bits.push(`🕒 ${t}`);
+    if (wtxt) bits.push(wtxt);
+    if (extra) bits.push(extra);
+
+    UI.nowMeta.textContent = bits.join(" · ");
+    setLive(!!s.alive);
+  }
+
+  function applyHudScaleForLayout(n) {
+    // Ajuste “un poco más escalado” y más limpio en 6/9
+    const map = {
+      1: { hud: 0.98, tile: 0.96 },
+      2: { hud: 0.96, tile: 0.94 },
+      3: { hud: 0.95, tile: 0.92 },
+      4: { hud: 0.94, tile: 0.90 },
+      5: { hud: 0.93, tile: 0.88 },
+      6: { hud: 0.92, tile: 0.86 },
+      7: { hud: 0.91, tile: 0.85 },
+      8: { hud: 0.91, tile: 0.84 },
+      9: { hud: 0.90, tile: 0.82 },
+      10:{ hud: 0.89, tile: 0.81 },
+      11:{ hud: 0.89, tile: 0.80 },
+      12:{ hud: 0.88, tile: 0.79 },
+    };
+    const v = map[n] || { hud: 0.92, tile: 0.86 };
+    document.documentElement.style.setProperty("--hudScale", String(v.hud));
+    document.documentElement.style.setProperty("--tileHudScale", String(v.tile));
+  }
+
+  // Tiles
+  const SLOTS = []; // { idx, cam, alive, failCount, lastGoodAt, tz, weather, rotate:{...}, mode }
+  const TILES = []; // TilePlayer instances
+
   class TilePlayer {
     constructor(slotIndex, tileEl, mediaEl) {
       this.slot = slotIndex;
@@ -550,7 +519,6 @@
       this.yt = null;
       this.hls = null;
 
-      // HUD
       this.hud = document.createElement("div");
       this.hud.className = "tileHud";
 
@@ -566,7 +534,6 @@
 
       this.card.appendChild(this.titleEl);
       this.card.appendChild(this.badgeRow);
-
       this.hud.appendChild(this.card);
       this.tile.appendChild(this.hud);
     }
@@ -579,6 +546,10 @@
         b.textContent = it;
         this.badgeRow.appendChild(b);
       }
+    }
+
+    setActive(isActive) {
+      this.tile.classList.toggle("active", !!isActive);
     }
 
     setMuted(m) {
@@ -625,523 +596,685 @@
       s.alive = false;
 
       this.titleEl.textContent = cam.title || cam.id;
-      this._setBadges([`Slot ${this.slot + 1}`, cam.kind?.toUpperCase() || "—", cam.region || ""]);
+      this._setBadges([`Slot ${this.slot + 1}`, (cam.kind || "—").toUpperCase(), cam.region || ""]);
 
       if (s.idx === STATE.activeSlot) setNowUIFromActive("cargando…");
-
       this.clear();
 
-      // location inference
+      // infer location
       const city = cam.city || inferCityFromTitle(cam.title);
       const country = cam.country || countryNameFromRegion(cam.region);
       const cont = continentFromCam(cam);
-      const tz = cam.tz || s.tz || "";
-      const locTxt = [city, country].filter(Boolean).join(", ") + (cont ? ` · ${cont}` : "");
 
-      // preload weather/timezone from Open-Meteo if lat/lon exist
+      // prefetch weather if possible
       if (Number.isFinite(cam.lat) && Number.isFinite(cam.lon)) {
-        Weather.get(cam.lat, cam.lon).then((w) => {
-          if (t !== this.token) return;
-          if (w?.tz && !s.tz) s.tz = w.tz;
-        }).catch(()=>{});
+        const w = await Weather.get(cam.lat, cam.lon);
+        if (t !== this.token) return false;
+        s.weather = w;
+        if (w?.tz && !s.tz) s.tz = w.tz;
+      } else {
+        s.weather = null;
       }
 
-      // YOUTUBE
+      // tz
+      s.tz = s.tz || cam.tz || "";
+
+      const refreshHudBadges = () => {
+        const localT = s.tz ? formatLocalTime(s.tz) : "";
+        const w = s.weather;
+        const wtxt = (w && Number.isFinite(w.temp)) ? `${weatherLabel(w.code)} ${Math.round(w.temp)}°C` : "";
+        const loc = [city, country].filter(Boolean).join(", ");
+        this._setBadges([
+          `Slot ${this.slot + 1}`,
+          (cam.kind || "—").toUpperCase(),
+          loc || cont || cam.region || "",
+          localT ? `🕒 ${localT}` : "",
+          wtxt,
+          reason === "url" ? "URL" : ""
+        ]);
+      };
+
+      refreshHudBadges();
+
+      // ── YOUTUBE ──────────────────────────────────────────────────────────────
       if (cam.kind === "youtube") {
         const okApi = await ensureYouTubeAPI();
+        if (t !== this.token) return false;
 
         const wrap = document.createElement("div");
         wrap.style.position = "absolute";
         wrap.style.inset = "0";
         this.media.appendChild(wrap);
 
-        if (!okApi || !(window.YT && window.YT.Player)) {
+        if (!okApi) {
           const iframe = document.createElement("iframe");
           iframe.allow = "autoplay; encrypted-media; picture-in-picture";
           iframe.allowFullscreen = true;
-          const mute = PLAY.muted ? 1 : 0;
-          iframe.src = `https://www.youtube.com/embed/${encodeURIComponent(cam.src)}?autoplay=1&mute=${mute}&controls=0&rel=0&modestbranding=1&playsinline=1`;
+          iframe.referrerPolicy = "strict-origin-when-cross-origin";
+          iframe.src =
+            `https://www.youtube-nocookie.com/embed/${encodeURIComponent(cam.src)}?autoplay=1&mute=${PLAY.muted ? 1 : 0}&controls=0&rel=0&modestbranding=1&playsinline=1`;
           wrap.appendChild(iframe);
 
-          // best-effort: lo marcamos vivo tras un pequeño delay
-          await sleep(900);
-          if (t !== this.token) return false;
-          s.alive = true;
-          s.lastGoodAt = nowMs();
-          this._refreshOverlay(locTxt);
-          if (s.idx === STATE.activeSlot) setNowUIFromActive();
-          emitState();
+          iframe.addEventListener("load", () => {
+            if (t !== this.token) return;
+            s.alive = true;
+            s.lastGoodAt = nowMs();
+            if (s.idx === STATE.activeSlot) setNowUIFromActive();
+            emitState();
+          }, { once: true });
+
+          this.elem = iframe;
           return true;
         }
 
-        const host = document.createElement("div");
-        host.id = `yt_slot_${this.slot}_${randId(6)}`;
-        host.style.width = "100%";
-        host.style.height = "100%";
-        wrap.appendChild(host);
+        // YT.Player
+        const div = document.createElement("div");
+        div.style.width = "100%";
+        div.style.height = "100%";
+        wrap.appendChild(div);
 
-        let aliveMarked = false;
+        const onReady = (ev) => {
+          if (t !== this.token) return;
+          try {
+            if (PLAY.muted) ev.target.mute();
+            else ev.target.unMute();
+            ev.target.playVideo?.();
+          } catch {}
+        };
+
+        const onState = (ev) => {
+          if (t !== this.token) return;
+          // 1 = playing, 3 = buffering
+          if (ev?.data === 1 || ev?.data === 3) {
+            if (!s.alive) {
+              s.alive = true;
+              s.lastGoodAt = nowMs();
+              if (s.idx === STATE.activeSlot) setNowUIFromActive();
+              emitState();
+            }
+          }
+        };
 
         try {
-          this.yt = new window.YT.Player(host.id, {
+          this.yt = new window.YT.Player(div, {
             videoId: cam.src,
             playerVars: {
               autoplay: 1,
+              mute: PLAY.muted ? 1 : 0,
               controls: 0,
               rel: 0,
               modestbranding: 1,
-              playsinline: 1,
-              mute: PLAY.muted ? 1 : 0,
+              playsinline: 1
             },
-            events: {
-              onReady: (ev) => {
-                try {
-                  if (PLAY.muted) ev.target.mute();
-                  ev.target.playVideo();
-                } catch {}
-              },
-              onStateChange: (ev) => {
-                if (t !== this.token) return;
-                // 1=PLAYING
-                if (ev?.data === 1 && !aliveMarked) {
-                  aliveMarked = true;
-                  s.alive = true;
-                  s.lastGoodAt = nowMs();
-                  this._refreshOverlay(locTxt);
-                  if (s.idx === STATE.activeSlot) setNowUIFromActive();
-                  emitState();
-                }
-              },
-              onError: () => {
-                if (t !== this.token) return;
-                s.failCount++;
-                s.alive = false;
-                this._refreshOverlay(locTxt, "sin señal");
-                if (STATE.rotate.enabled && s.idx === STATE.activeSlot) {
-                  rotateNext("yt error");
-                }
-                emitState();
-              }
-            }
+            events: { onReady, onStateChange: onState }
           });
-
-          // overlay initial
-          this._refreshOverlay(locTxt, "cargando…");
-          return true;
         } catch (e) {
-          console.warn("[yt] fail", e);
+          console.warn("[YT] fail", e);
           s.failCount++;
           s.alive = false;
-          this._refreshOverlay(locTxt, "sin señal");
+          if (s.idx === STATE.activeSlot) setNowUIFromActive("(error YT)");
           emitState();
           return false;
         }
+
+        return true;
       }
 
-      // HLS
+      // ── HLS ─────────────────────────────────────────────────────────────────
       if (cam.kind === "hls") {
-        const video = document.createElement("video");
-        video.playsInline = true;
-        video.autoplay = true;
-        video.muted = PLAY.muted;
-        video.controls = false;
-        video.loop = false;
+        const v = document.createElement("video");
+        v.playsInline = true;
+        v.autoplay = true;
+        v.muted = PLAY.muted;
+        v.controls = false;
+        v.preload = "auto";
+        v.style.width = "100%";
+        v.style.height = "100%";
+        v.style.objectFit = "cover";
 
-        this.media.appendChild(video);
-        this.elem = video;
+        this.media.appendChild(v);
+        this.elem = v;
 
         const markAlive = () => {
           if (t !== this.token) return;
           s.alive = true;
           s.lastGoodAt = nowMs();
-          this._refreshOverlay(locTxt);
           if (s.idx === STATE.activeSlot) setNowUIFromActive();
           emitState();
         };
 
-        video.addEventListener("playing", markAlive, { once: true });
-        video.addEventListener("error", () => {
-          if (t !== this.token) return;
-          s.failCount++;
-          s.alive = false;
-          this._refreshOverlay(locTxt, "sin señal");
-          if (STATE.rotate.enabled && s.idx === STATE.activeSlot) rotateNext("hls error");
-          emitState();
-        });
+        v.addEventListener("playing", markAlive, { once: true });
 
-        const canNative = video.canPlayType("application/vnd.apple.mpegurl");
-        if (canNative) {
-          video.src = cam.src;
-          try { await video.play(); } catch {}
-          this._refreshOverlay(locTxt, "cargando…");
-          return true;
-        }
-
-        const okHls = await ensureHlsJs();
-        if (!okHls || !window.Hls) {
-          s.failCount++;
-          s.alive = false;
-          this._refreshOverlay(locTxt, "HLS.js no disponible");
-          emitState();
-          return false;
-        }
-
+        // Native HLS (Safari) o hls.js
         try {
-          this.hls = new window.Hls({ enableWorker: true, lowLatencyMode: true });
-          this.hls.loadSource(cam.src);
-          this.hls.attachMedia(video);
-
-          this.hls.on(window.Hls.Events.ERROR, (_ev, data) => {
-            if (t !== this.token) return;
-            if (data?.fatal) {
-              s.failCount++;
-              s.alive = false;
-              this._refreshOverlay(locTxt, "sin señal");
-              try { this.hls?.destroy?.(); } catch {}
-              this.hls = null;
-
-              if (STATE.rotate.enabled && s.idx === STATE.activeSlot) rotateNext("hls fatal");
-              emitState();
-            }
-          });
-
-          this._refreshOverlay(locTxt, "cargando…");
-          return true;
+          if (v.canPlayType("application/vnd.apple.mpegurl")) {
+            v.src = cam.src;
+            await v.play().catch(() => {});
+          } else {
+            const ok = await ensureHlsJs();
+            if (!ok || !window.Hls) throw new Error("Hls.js no disponible");
+            const hls = new window.Hls({ lowLatencyMode: true });
+            this.hls = hls;
+            hls.attachMedia(v);
+            hls.on(window.Hls.Events.MEDIA_ATTACHED, () => {
+              hls.loadSource(cam.src);
+            });
+            hls.on(window.Hls.Events.ERROR, (evt, data) => {
+              if (!data?.fatal) return;
+              try { hls.destroy(); } catch {}
+            });
+            await v.play().catch(() => {});
+          }
         } catch (e) {
-          console.warn("[hls] fail", e);
+          console.warn("[HLS] fail", e);
           s.failCount++;
           s.alive = false;
-          this._refreshOverlay(locTxt, "sin señal");
+          if (s.idx === STATE.activeSlot) setNowUIFromActive("(error HLS)");
           emitState();
           return false;
         }
+        return true;
       }
 
-      // IMAGE
+      // ── IMAGE ───────────────────────────────────────────────────────────────
       if (cam.kind === "image") {
         const img = document.createElement("img");
         img.loading = "lazy";
+        img.decoding = "async";
+        img.referrerPolicy = "no-referrer";
         img.src = cam.src;
         this.media.appendChild(img);
         this.elem = img;
 
-        this._refreshOverlay(locTxt, "cargando…");
+        img.addEventListener("load", () => {
+          if (t !== this.token) return;
+          s.alive = true;
+          s.lastGoodAt = nowMs();
+          if (s.idx === STATE.activeSlot) setNowUIFromActive();
+          emitState();
+        }, { once: true });
 
-        await new Promise((resolve) => {
-          img.onload = () => resolve(true);
-          img.onerror = () => resolve(false);
-        });
+        img.addEventListener("error", () => {
+          if (t !== this.token) return;
+          s.failCount++;
+          s.alive = false;
+          if (s.idx === STATE.activeSlot) setNowUIFromActive("(error IMG)");
+          emitState();
+        }, { once: true });
 
-        if (t !== this.token) return false;
-
-        // ok
-        s.alive = true;
-        s.lastGoodAt = nowMs();
-        this._refreshOverlay(locTxt);
-        if (s.idx === STATE.activeSlot) setNowUIFromActive();
-        emitState();
         return true;
       }
 
-      // Unknown kind
-      s.failCount++;
-      s.alive = false;
-      this._refreshOverlay(locTxt, "tipo no soportado");
-      emitState();
       return false;
     }
-
-    async _refreshOverlay(locTxt, extra = "") {
-      const s = SLOTS[this.slot];
-      if (!s?.cam) return;
-
-      const cam = s.cam;
-      const city = cam.city || inferCityFromTitle(cam.title);
-      const country = cam.country || countryNameFromRegion(cam.region);
-      const cont = continentFromCam(cam);
-      const baseLoc = locTxt || [city, country].filter(Boolean).join(", ") + (cont ? ` · ${cont}` : "");
-
-      const tz = s.tz || cam.tz || "";
-      const timeStr = tz ? formatLocalTime(tz) : "";
-      let weatherStr = "";
-
-      if (Number.isFinite(cam.lat) && Number.isFinite(cam.lon)) {
-        const w = await Weather.get(cam.lat, cam.lon);
-        if (w) {
-          if (w.tz && !s.tz) s.tz = w.tz;
-          const tC = (w.temp != null) ? `${Math.round(w.temp)}°C` : "";
-          const wL = weatherLabel(w.code);
-          const wind = (w.wind != null) ? `${Math.round(w.wind)} km/h` : "";
-          weatherStr = [tC, wL, wind].filter(Boolean).join(" · ");
-        }
-      } else {
-        weatherStr = "Clima: sin coordenadas";
-      }
-
-      const badges = [];
-      badges.push(`Slot ${this.slot + 1}`);
-      badges.push(cam.kind?.toUpperCase() || "—");
-      if (cam.region) badges.push(cam.region);
-
-      const info = [];
-      if (baseLoc) info.push(baseLoc);
-      if (timeStr) info.push(`🕒 ${timeStr}`);
-      if (weatherStr) info.push(`🌦️ ${weatherStr}`);
-      if (extra) info.push(extra);
-
-      this._setBadges(badges.concat(info));
-    }
   }
 
-  // Rotation bag (para el slot activo)
-  const BAG = {
-    ids: [],
-    refill() {
-      const list = filteredList(true);
-      const ids = list.map(c => c.id);
-      for (let i = ids.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [ids[i], ids[j]] = [ids[j], ids[i]];
-      }
-      this.ids = ids;
-    },
-    nextId() {
-      if (!this.ids.length) this.refill();
-      return this.ids.shift() || null;
-    }
-  };
+  function computeGrid(n) {
+    // cols ~ sqrt, rows = ceil(n/cols)
+    const cols = Math.ceil(Math.sqrt(n));
+    const rows = Math.ceil(n / cols);
+    return { cols, rows };
+  }
 
-  function filteredList(applyRotateFilter = true) {
-    const list = CATALOG.list;
+  function rebuildLayout(n) {
+    STATE.layoutN = clamp(Number(n) || 1, 1, 12);
+    applyHudScaleForLayout(STATE.layoutN);
 
-    let kind = "any";
-    let tag = "";
+    // clear
+    UI.playerArea.innerHTML = "";
+    SLOTS.length = 0;
+    TILES.length = 0;
 
-    if (applyRotateFilter && STATE.rotate.enabled) {
-      kind = STATE.rotate.kind || "any";
-      tag = STATE.rotate.tag || "";
-    } else if (P.tag) {
-      tag = P.tag;
+    const { cols, rows } = computeGrid(STATE.layoutN);
+    UI.playerArea.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    UI.playerArea.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+
+    for (let i = 0; i < STATE.layoutN; i++) {
+      const tile = document.createElement("div");
+      tile.className = "tile";
+      const media = document.createElement("div");
+      media.className = "tileMedia";
+      tile.appendChild(media);
+
+      UI.playerArea.appendChild(tile);
+
+      const slot = {
+        idx: i,
+        cam: null,
+        alive: false,
+        failCount: 0,
+        lastGoodAt: 0,
+        tz: "",
+        weather: null,
+        rotate: { enabled: false, intervalSec: 40, kind: "any", tag: "" },
+        mode: "manual",
+        _rotTimer: 0,
+      };
+      SLOTS.push(slot);
+
+      const tp = new TilePlayer(i, tile, media);
+      TILES.push(tp);
+
+      tile.addEventListener("click", () => setActiveSlot(i), { passive: true });
     }
 
-    return list.filter(c => {
-      if (kind !== "any" && c.kind !== kind) return false;
-      if (tag && !c.tags.includes(tag)) return false;
-      return true;
-    });
+    // keep activeSlot in range
+    STATE.activeSlot = clamp(STATE.activeSlot, 0, STATE.layoutN - 1);
+    refreshActiveVisual();
+    setNowUIFromActive();
+    emitState({ layoutChanged: true });
   }
 
-  function pickNextFromSlot(slotIdx, direction = 1) {
-    const slot = SLOTS[slotIdx];
-    const list = filteredList(false);
-    if (!list.length) return null;
-
-    if (!slot?.cam) return list[0];
-    const idx = list.findIndex(x => x.id === slot.cam.id);
-    return list[(idx + direction + list.length) % list.length] || list[0];
+  function refreshActiveVisual() {
+    for (let i = 0; i < TILES.length; i++) TILES[i].setActive(i === STATE.activeSlot);
   }
 
-  function disarmRotateTimer() {
-    if (PLAY.rotateTimer) window.clearTimeout(PLAY.rotateTimer);
-    PLAY.rotateTimer = 0;
+  function setActiveSlot(i) {
+    const idx = clamp(Number(i) || 0, 0, Math.max(0, STATE.layoutN - 1));
+    STATE.activeSlot = idx;
+    refreshActiveVisual();
+    setNowUIFromActive();
+    emitState({ activeSlotChanged: true });
   }
 
-  function armRotateTimer() {
-    disarmRotateTimer();
-    if (!STATE.rotate.enabled) return;
-    const sec = clamp(Number(STATE.rotate.intervalSec || 40), 8, 3600);
-    PLAY.rotateTimer = window.setTimeout(() => rotateNext("timer"), sec * 1000);
-  }
+  async function playInSlot(slotIndex, cam, reason = "manual") {
+    const idx = clamp(Number(slotIndex) || 0, 0, Math.max(0, STATE.layoutN - 1));
+    setActiveSlot(idx);
 
-  async function rotateNext(trigger = "timer") {
-    if (!STATE.rotate.enabled) return;
-
-    const nextId = BAG.nextId();
-    const next = nextId ? CATALOG.byId.get(nextId) : null;
-    if (!next) return;
-
-    STATE.mode = "rotate";
-    setModeLabel("rotate");
-    await playInSlot(STATE.activeSlot, next, { reason: "rotate" });
-    armRotateTimer();
-  }
-
-  async function playInSlot(slotIdx, camOrId, { reason = "manual" } = {}) {
-    const slot = SLOTS[slotIdx];
-    if (!slot) return false;
-
-    const cam = typeof camOrId === "string"
-      ? CATALOG.byId.get(camOrId)
-      : (camOrId ? (CATALOG.byId.get(camOrId.id) || camOrId) : null);
-
-    if (!cam) {
-      STATE.lastError = "Cam no encontrada";
-      slot.failCount++;
-      emitState();
-      if (slotIdx === STATE.activeSlot) setNowUIFromActive("(cam no encontrada)");
-      return false;
+    const ok = await TILES[idx].play(cam, reason);
+    if (ok) {
+      // persist last state (slots)
+      persistLast();
     }
-
-    try { localStorage.setItem(LS_LAST, cam.id); } catch {}
-    const ok = await slot.player.play(cam, reason);
-    if (!ok) slot.failCount++;
-    emitState();
     return ok;
   }
 
-  function stopSlot(slotIdx, reason = "Stop") {
-    const slot = SLOTS[slotIdx];
-    if (!slot) return;
-    slot.player.stop(reason);
-    slot.alive = false;
-    emitState({ stopped: true, reason, slot: slotIdx });
+  function stopSlot(slotIndex, reason = "Stop") {
+    const idx = clamp(Number(slotIndex) || 0, 0, Math.max(0, STATE.layoutN - 1));
+    TILES[idx].stop(reason);
+    persistLast();
+    emitState({ stopSlot: idx });
   }
 
   function stopAll(reason = "Stop") {
-    disarmRotateTimer();
-    STATE.rotate.enabled = false;
-    STATE.mode = "manual";
+    for (let i = 0; i < TILES.length; i++) TILES[i].stop(reason);
     setModeLabel("manual");
-    for (let i = 0; i < SLOTS.length; i++) stopSlot(i, reason);
-    setSignal("warn", reason || "stopped");
-    STATE.lastError = reason ? String(reason) : "";
+    setSignal("warn", "stopped");
     setNowUIFromActive(reason ? `(${reason})` : "");
-    emitState({ stoppedAll: true, reason });
+    emitState({ stopAll: true });
   }
 
-  // Commands
-  async function handleCommand(cmd, data, nonce) {
-    const c = String(cmd || "").toUpperCase();
-    const d = data || {};
+  function persistLast() {
+    try {
+      const data = {
+        layoutN: STATE.layoutN,
+        activeSlot: STATE.activeSlot,
+        muted: !!PLAY.muted,
+        hudVisible: !!STATE.hudVisible,
+        slots: SLOTS.map(s => s.cam?.id || null),
+      };
+      localStorage.setItem(LS_LAST, JSON.stringify(data));
+    } catch {}
+  }
 
-    if (c === "PING") {
-      sendAck(nonce, true, "pong");
-      emitState({ pong: true });
-      return;
+  function restoreLast() {
+    try {
+      const raw = localStorage.getItem(LS_LAST);
+      if (!raw) return null;
+      const j = JSON.parse(raw);
+      if (!j || typeof j !== "object") return null;
+      return j;
+    } catch { return null; }
+  }
+
+  // Rotation (por slot)
+  function disarmRotate(slot) {
+    const s = SLOTS[slot];
+    if (!s) return;
+    if (s._rotTimer) window.clearTimeout(s._rotTimer);
+    s._rotTimer = 0;
+  }
+
+  function armRotate(slot) {
+    const s = SLOTS[slot];
+    if (!s) return;
+    disarmRotate(slot);
+    if (!s.rotate.enabled) return;
+
+    const ms = clamp(Number(s.rotate.intervalSec) || 40, 5, 3600) * 1000;
+    s._rotTimer = window.setTimeout(() => rotateNext(slot, "timer"), ms);
+  }
+
+  function pickNextCamForSlot(slot) {
+    const s = SLOTS[slot];
+    if (!s) return null;
+
+    const wantKind = String(s.rotate.kind || "any");
+    const wantTag = String(s.rotate.tag || "");
+
+    // pool simple, respeta filtros
+    const pool = CATALOG.list.filter(c => {
+      if (!c) return false;
+      if (wantKind !== "any" && c.kind !== wantKind) return false;
+      if (wantTag && !(c.tags || []).includes(wantTag)) return false;
+      return true;
+    });
+
+    if (!pool.length) return null;
+
+    // evita repetir el mismo
+    const curId = s.cam?.id || "";
+    if (pool.length === 1) return pool[0];
+
+    // random con pocos intentos
+    for (let i = 0; i < 8; i++) {
+      const c = pool[(Math.random() * pool.length) | 0];
+      if (c.id !== curId) return c;
     }
+    return pool[(Math.random() * pool.length) | 0];
+  }
 
-    if (c === "RELOAD_CAMS") {
-      const ok = await loadCams();
-      sendAck(nonce, ok, ok ? "catalog reloaded" : "catalog reload failed");
+  async function rotateNext(slot, why = "rotate") {
+    const s = SLOTS[slot];
+    if (!s || !s.rotate.enabled) return;
+
+    const cam = pickNextCamForSlot(slot);
+    if (!cam) {
+      toast("Rotación: no hay cams que cumplan filtros");
+      disarmRotate(slot);
+      s.rotate.enabled = false;
       emitState();
       return;
     }
+    await playInSlot(slot, cam, "rotate");
+    armRotate(slot);
+  }
 
-    // NUEVO: layout
-    if (c === "LAYOUT_SET" || c === "SET_LAYOUT") {
-      const n = clamp(Number(d.n || d.layout || 1), 1, 12);
-      applyLayout(n);
-      sendAck(nonce, true, `layout ${n}`);
-      return;
-    }
+  function setRotate(slot, cfg) {
+    const s = SLOTS[slot];
+    if (!s) return;
 
-    // NUEVO: slot activo
-    if (c === "SLOT_SET") {
-      const s = clamp(Number(d.slot || 0), 0, STATE.layoutN - 1);
-      STATE.activeSlot = s;
-      highlightActiveSlot();
-      setNowUIFromActive();
-      sendAck(nonce, true, `slot ${s + 1}`);
+    const enabled = !!cfg.enabled;
+    const intervalSec = clamp(Number(cfg.intervalSec) || 40, 5, 3600);
+    const kind = String(cfg.kind || "any");
+    const tag = String(cfg.tag || "");
+
+    s.rotate = { enabled, intervalSec, kind, tag };
+    s.mode = enabled ? "rotate" : "manual";
+
+    if (slot === STATE.activeSlot) setModeLabel(s.mode);
+    if (enabled) armRotate(slot);
+    else disarmRotate(slot);
+
+    emitState({ rotateChanged: true });
+  }
+
+  // Fullscreen best-effort
+  async function setFullscreen(enabled) {
+    const want = !!enabled;
+    try {
+      const isFs = !!document.fullscreenElement;
+      if (want && !isFs) {
+        await UI.stage.requestFullscreen();
+      } else if (!want && isFs) {
+        await document.exitFullscreen();
+      }
       emitState();
-      return;
-    }
-
-    // STOP all (compat)
-    if (c === "STOP") {
-      stopAll("Stop");
-      sendAck(nonce, true, "stopped all");
-      return;
-    }
-
-    // NUEVO: stop slot
-    if (c === "STOP_SLOT") {
-      const s = clamp(Number(d.slot ?? STATE.activeSlot), 0, STATE.layoutN - 1);
-      stopSlot(s, "Stop slot");
-      sendAck(nonce, true, `stopped slot ${s + 1}`);
-      return;
-    }
-
-    if (c === "MUTE_SET") {
-      setMuted(!!d.muted);
-      sendAck(nonce, true, "mute set");
-      return;
-    }
-
-    // Rotación (aplica al slot activo)
-    if (c === "MODE_SET") {
-      const mode = (String(d.mode || "manual").toLowerCase() === "rotate") ? "rotate" : "manual";
-      STATE.mode = mode;
-      setModeLabel(mode);
-      sendAck(nonce, true, "mode set");
+      return true;
+    } catch (e) {
+      // Normal: browsers requieren gesto dentro de la página del player
+      toast("Fullscreen requiere click en el Player (pulsa F).");
       emitState();
-      return;
+      return false;
     }
+  }
 
-    if (c === "ROTATE_SET") {
-      const enabled = !!d.enabled;
-      const intervalSec = clamp(Number(d.intervalSec || 40), 8, 3600);
-      const kind = String(d.kind || "any");
-      const tag = String(d.tag || "");
+  // Emit state
+  function publicState() {
+    const active = SLOTS[STATE.activeSlot];
+    return {
+      app: { name: APP.name, ver: APP.ver, protocol: APP.protocol },
+      layoutN: STATE.layoutN,
+      activeSlot: STATE.activeSlot,
+      muted: !!PLAY.muted,
+      hudVisible: !!STATE.hudVisible,
+      fullscreen: !!document.fullscreenElement,
+      mode: active?.mode || "manual",
+      rotate: active ? { ...active.rotate } : { enabled: false, intervalSec: 40, kind: "any", tag: "" },
+      slots: SLOTS.map(s => ({
+        id: s.cam?.id || null,
+        title: s.cam?.title || null,
+        kind: s.cam?.kind || null,
+        region: s.cam?.region || null,
+        city: s.cam?.city || inferCityFromTitle(s.cam?.title || ""),
+        tz: s.tz || s.cam?.tz || null,
+        playing: !!s.alive,
+        failCount: s.failCount || 0,
+        lastGoodAt: s.lastGoodAt || 0,
+      })),
+      seenControlAgoMs: STATE.lastControlSeenAt ? (nowMs() - STATE.lastControlSeenAt) : null,
+      lastError: String(STATE.lastError || ""),
+    };
+  }
 
-      STATE.rotate = { enabled, intervalSec, kind, tag };
-      STATE.mode = enabled ? "rotate" : "manual";
-      setModeLabel(STATE.mode);
+  function emitState(extra = {}) {
+    const payload = {
+      v: APP.protocol,
+      key: P.key,
+      ts: nowMs(),
+      nonce: randId(12),
+      from: "player",
+      type: "STATE",
+      state: { ...publicState(), ...extra }
+    };
+    emit("STATE", payload);
+  }
 
-      if (enabled) {
-        BAG.refill();
-        armRotateTimer();
-        if (d.rotateNow) rotateNext("rotateNow");
-      } else {
-        disarmRotateTimer();
+  // Command handling
+  function handleCommand(cmdRaw, data, cmdNonce) {
+    const cmd = String(cmdRaw || "").toUpperCase().trim();
+    const d = (data && typeof data === "object") ? data : {};
+
+    // compat aliases
+    const ALIASES = {
+      LAYOUT: "LAYOUT_SET",
+      SET_LAYOUT: "LAYOUT_SET",
+      SLOT: "SLOT_SET",
+      SET_SLOT: "SLOT_SET",
+      PLAY: "PLAY_ID",
+      TAKE: "PLAY_ID",
+      STOP: "STOP_ALL",
+      STOPALL: "STOP_ALL",
+      STOP_SLOT: "STOP_SLOT",
+      MUTE: "MUTE_TOGGLE",
+      ROTATE: "ROTATE_SET",
+    };
+    const C = ALIASES[cmd] || cmd;
+
+    const slot = (d.slot !== undefined) ? d.slot : STATE.activeSlot;
+
+    try {
+      if (C === "PING") {
+        STATE.lastControlSeenAt = nowMs();
+        emitState({ pong: true });
+        sendACK(cmdNonce, C, true, "pong");
+        return;
       }
 
-      sendAck(nonce, true, enabled ? "rotate enabled" : "rotate disabled");
-      emitState();
-      return;
+      if (C === "HUD_SET") {
+        setHudVisible(!!d.enabled);
+        sendACK(cmdNonce, C, true, STATE.hudVisible ? "hud on" : "hud off");
+        return;
+      }
+      if (C === "HUD_TOGGLE") {
+        setHudVisible(!STATE.hudVisible);
+        sendACK(cmdNonce, C, true, STATE.hudVisible ? "hud on" : "hud off");
+        return;
+      }
+
+      if (C === "FULLSCREEN_SET") {
+        setFullscreen(!!d.enabled).then(() => {});
+        sendACK(cmdNonce, C, true, "fs request");
+        return;
+      }
+      if (C === "FULLSCREEN_TOGGLE") {
+        setFullscreen(!document.fullscreenElement).then(() => {});
+        sendACK(cmdNonce, C, true, "fs toggle");
+        return;
+      }
+
+      if (C === "MUTE_SET") {
+        setMuted(!!d.enabled);
+        sendACK(cmdNonce, C, true, PLAY.muted ? "muted" : "unmuted");
+        return;
+      }
+      if (C === "MUTE_TOGGLE") {
+        setMuted(!PLAY.muted);
+        sendACK(cmdNonce, C, true, PLAY.muted ? "muted" : "unmuted");
+        return;
+      }
+
+      if (C === "LAYOUT_SET") {
+        const n = clamp(Number(d.n ?? d.layout ?? d.count) || STATE.layoutN, 1, 12);
+        rebuildLayout(n);
+        sendACK(cmdNonce, C, true, `layout ${n}`);
+        persistLast();
+        return;
+      }
+
+      if (C === "SLOT_SET") {
+        setActiveSlot(slot);
+        const mode = SLOTS[STATE.activeSlot]?.mode || "manual";
+        setModeLabel(mode);
+        sendACK(cmdNonce, C, true, `slot ${STATE.activeSlot + 1}`);
+        persistLast();
+        return;
+      }
+
+      if (C === "PLAY_ID") {
+        const id = String(d.id || d.camId || d.cameraId || "").trim();
+        const cam = CATALOG.byId.get(id);
+        if (!cam) {
+          toast("Cam no encontrada: " + id);
+          STATE.lastError = "Cam no encontrada";
+          emitState();
+          sendACK(cmdNonce, C, false, "cam not found");
+          return;
+        }
+        playInSlot(slot, cam, "manual").then(() => {});
+        sendACK(cmdNonce, C, true, `play ${id}`);
+        return;
+      }
+
+      if (C === "PLAY_URL") {
+        const url = String(d.url || "").trim();
+        const kind = String(d.kind || "").trim();
+        const src = String(d.src || "").trim();
+        let k = kind, s = src;
+
+        if (url && (!k || !s)) {
+          const g = guessKindFromUrl(url);
+          k = g.kind; s = g.src;
+        }
+
+        if (!k || !s) {
+          toast("URL no válida o no soportada");
+          sendACK(cmdNonce, C, false, "bad url");
+          return;
+        }
+
+        const temp = normalizeCamObj({
+          id: d.id || `url_${randId(8)}`,
+          title: String(d.title || "URL Cam"),
+          kind: k,
+          src: s,
+          tags: Array.isArray(d.tags) ? d.tags : [],
+          region: String(d.region || ""),
+          city: String(d.city || ""),
+          country: String(d.country || ""),
+          continent: String(d.continent || ""),
+          tz: String(d.tz || ""),
+          lat: Number.isFinite(+d.lat) ? +d.lat : null,
+          lon: Number.isFinite(+d.lon) ? +d.lon : null,
+        }) || null;
+
+        if (!temp) {
+          toast("No pude crear cam desde URL");
+          sendACK(cmdNonce, C, false, "temp cam fail");
+          return;
+        }
+
+        playInSlot(slot, temp, "url").then(() => {});
+        sendACK(cmdNonce, C, true, "play url");
+        return;
+      }
+
+      if (C === "STOP_SLOT") {
+        stopSlot(slot, "Stop");
+        sendACK(cmdNonce, C, true, "stop slot");
+        return;
+      }
+
+      if (C === "STOP_ALL") {
+        stopAll("Stop");
+        sendACK(cmdNonce, C, true, "stop all");
+        return;
+      }
+
+      if (C === "NEXT" || C === "PREV") {
+        // En manual: siguiente random del catálogo (simple). En rotación: rotateNext
+        const s = SLOTS[slot];
+        if (!s) return;
+
+        if (s.rotate.enabled) {
+          rotateNext(slot, C.toLowerCase()).then(() => {});
+          sendACK(cmdNonce, C, true, "rotate next");
+          return;
+        }
+
+        if (!CATALOG.list.length) {
+          sendACK(cmdNonce, C, false, "empty catalog");
+          return;
+        }
+
+        // simple next/prev relativo al id actual
+        const curId = s.cam?.id || "";
+        const idx = curId ? CATALOG.list.findIndex(x => x.id === curId) : -1;
+        let ni = (idx < 0) ? 0 : idx + (C === "NEXT" ? 1 : -1);
+        if (ni < 0) ni = CATALOG.list.length - 1;
+        if (ni >= CATALOG.list.length) ni = 0;
+
+        playInSlot(slot, CATALOG.list[ni], "manual").then(() => {});
+        sendACK(cmdNonce, C, true, C.toLowerCase());
+        return;
+      }
+
+      if (C === "ROTATE_SET") {
+        const enabled = !!(d.enabled ?? d.on ?? d.rotate);
+        const intervalSec = d.intervalSec ?? d.sec ?? d.interval ?? 40;
+        const kind = d.kind ?? "any";
+        const tag = d.tag ?? "";
+        setRotate(clamp(Number(slot) || 0, 0, STATE.layoutN - 1), { enabled, intervalSec, kind, tag });
+        if (slot === STATE.activeSlot) setModeLabel(enabled ? "rotate" : "manual");
+        sendACK(cmdNonce, C, true, enabled ? "rotate on" : "rotate off");
+        return;
+      }
+
+      if (C === "ROTATE_NOW") {
+        rotateNext(clamp(Number(slot) || 0, 0, STATE.layoutN - 1), "manual").then(() => {});
+        sendACK(cmdNonce, C, true, "rotate now");
+        return;
+      }
+
+      // desconocido
+      sendACK(cmdNonce, C, false, "unknown cmd");
+    } catch (e) {
+      console.warn("[cmd] error", cmd, e);
+      sendACK(cmdNonce, C, false, "exception");
     }
-
-    // Compat: PLAY_ID (usa slot activo)
-    if (c === "PLAY_ID") {
-      disarmRotateTimer();
-      STATE.rotate.enabled = false;
-      STATE.mode = "manual";
-      setModeLabel("manual");
-
-      const id = String(d.id || "").trim();
-      const ok = await playInSlot(STATE.activeSlot, id, { reason: "manual" });
-      sendAck(nonce, ok, ok ? "playing" : "failed");
-      return;
-    }
-
-    // NUEVO: PLAY_SLOT
-    if (c === "PLAY_SLOT") {
-      disarmRotateTimer();
-      STATE.rotate.enabled = false;
-      STATE.mode = "manual";
-      setModeLabel("manual");
-
-      const slot = clamp(Number(d.slot ?? STATE.activeSlot), 0, STATE.layoutN - 1);
-      const id = String(d.id || "").trim();
-      const ok = await playInSlot(slot, id, { reason: "manual" });
-      sendAck(nonce, ok, ok ? `playing slot ${slot + 1}` : "failed");
-      return;
-    }
-
-    // NEXT/PREV (slot activo o slot en data)
-    if (c === "NEXT" || c === "PREV") {
-      const slot = clamp(Number(d.slot ?? STATE.activeSlot), 0, STATE.layoutN - 1);
-      const dir = (c === "NEXT") ? 1 : -1;
-      const next = pickNextFromSlot(slot, dir);
-      const ok = await playInSlot(slot, next, { reason: "manual" });
-      sendAck(nonce, ok, ok ? (c === "NEXT" ? "next" : "prev") : "failed");
-      return;
-    }
-
-    // desconocido
-    sendAck(nonce, false, "unknown cmd");
   }
 
-  function onMsg(payload) {
+  function onCMD(payload) {
     try {
       if (!payload || payload.v !== APP.protocol) return;
       if (payload.key !== P.key) return;
@@ -1153,97 +1286,100 @@
       if (!nonce || !ts) return;
       if (seenRecently(nonce, ts)) return;
 
-      setConn(true, "Control: conectado");
       STATE.lastControlSeenAt = nowMs();
-
-      handleCommand(payload.cmd, payload.data || {}, nonce);
+      handleCommand(payload.cmd, payload.data, payload.nonce);
     } catch {}
   }
 
-  if (bc) bc.onmessage = (e) => onMsg(e.data);
+  if (bc) bc.onmessage = (e) => onCMD(e.data);
   window.addEventListener("storage", (e) => {
     if (e.key !== LS_CMD) return;
-    try { onMsg(JSON.parse(e.newValue || "null")); } catch {}
+    try { onCMD(JSON.parse(e.newValue || "null")); } catch {}
   });
 
-  // UI actions
-  UI.btnMute?.addEventListener("click", () => setMuted(!PLAY.muted));
-  UI.btnStop?.addEventListener("click", () => stopAll("Stop"));
+  // UI events
+  UI.btnMute.addEventListener("click", () => setMuted(!PLAY.muted));
+  UI.btnStop.addEventListener("click", () => stopAll("Stop"));
 
-  UI.btnFs?.addEventListener("click", async () => {
-    try {
-      if (!document.fullscreenElement) await UI.stage.requestFullscreen();
-      else await document.exitFullscreen();
-    } catch {}
+  UI.btnFs.addEventListener("click", () => {
+    const want = !document.fullscreenElement;
+    setFullscreen(want).then(() => {});
   });
 
-  // Keyboard shortcuts
+  window.addEventListener("fullscreenchange", () => emitState({ fsChanged: true }));
+
   window.addEventListener("keydown", (e) => {
     if (e.repeat) return;
-
     const k = e.key.toLowerCase();
-    if (k === "m") UI.btnMute?.click();
-    if (k === "s") UI.btnStop?.click();
-    if (k === "f") UI.btnFs?.click();
-    if (k === "n") {
-      handleCommand("NEXT", { slot: STATE.activeSlot }, randId(8));
-    }
-
-    // 1..9 select slot
-    if (/^[1-9]$/.test(e.key)) {
-      const idx = Number(e.key) - 1;
-      if (idx < STATE.layoutN) {
-        STATE.activeSlot = idx;
-        highlightActiveSlot();
-        setNowUIFromActive();
-        emitState();
-      }
-    }
+    if (k === "f") UI.btnFs.click();
+    if (k === "m") UI.btnMute.click();
+    if (k === "s") UI.btnStop.click();
+    if (k === "h") setHudVisible(!STATE.hudVisible);
+    if (k === "n") handleCommand("NEXT", {}, randId(10));
+    if (/^[1-9]$/.test(k)) setActiveSlot(parseInt(k, 10) - 1);
   });
 
-  // Periodic overlay refresh (hora/clima)
+  // Tick: actualizar hora y refrescar badges / global HUD
   setInterval(() => {
-    for (const s of SLOTS) {
-      if (!s?.cam) continue;
-      // refresca overlay en background
-      try { s.player?._refreshOverlay?.(""); } catch {}
+    for (let i = 0; i < SLOTS.length; i++) {
+      const s = SLOTS[i];
+      const cam = s.cam;
+      if (!cam) continue;
+      // refresca weather cada ~10m por cache (solo si hay lat/lon)
+      // badges re-render “barato” en global + tile si tiene tz
+      if (s.tz || cam.tz) {
+        if (i === STATE.activeSlot) setNowUIFromActive();
+        // nota: badges de tile se refrescan solo indirectamente (al cambiar cam),
+        // pero el usuario pidió “hora actual”, así que al menos global siempre al día.
+      }
     }
-    setNowUIFromActive();
-  }, 5000);
+  }, 1000);
+
+  // Heartbeat
+  setInterval(() => {
+    const ago = STATE.lastControlSeenAt ? (nowMs() - STATE.lastControlSeenAt) : 999999;
+    setConn(ago < 5000, ago < 5000 ? "Control: conectado" : "Control: esperando");
+    emitState({ heartbeat: true });
+  }, 1500);
 
   // Boot
   (async function boot() {
     setConn(false, "Control: esperando");
     setModeLabel("manual");
-    setSignal("warn", "booting…");
+    setSignal("warn", "boot…");
     setMuted(PLAY.muted);
+    setHudVisible(STATE.hudVisible);
 
-    await loadCams({ soft: true });
+    await loadCams();
 
-    applyLayout(STATE.layoutN);
-
-    // Autoplay inicial en slot activo si hay id en URL o last
-    let id = P.startId;
-    if (!id) {
-      try { id = localStorage.getItem(LS_LAST) || ""; } catch {}
+    // restore last
+    const last = restoreLast();
+    if (last && typeof last === "object") {
+      STATE.layoutN = clamp(Number(last.layoutN) || STATE.layoutN, 1, 12);
+      STATE.activeSlot = clamp(Number(last.activeSlot) || 0, 0, STATE.layoutN - 1);
+      if (typeof last.muted === "boolean") PLAY.muted = last.muted;
+      if (typeof last.hudVisible === "boolean") STATE.hudVisible = last.hudVisible;
     }
-    if (id && CATALOG.byId.has(id)) {
-      if (P.autoplay) {
-        await playInSlot(STATE.activeSlot, id, { reason: "autoplay" });
-      } else {
-        // no autoplay: solo mostrar meta
-        const cam = CATALOG.byId.get(id);
-        SLOTS[STATE.activeSlot].cam = cam;
-        SLOTS[STATE.activeSlot].player.titleEl.textContent = cam.title || cam.id;
-        SLOTS[STATE.activeSlot].player._refreshOverlay("");
-        setNowUIFromActive("(listo)");
-        emitState();
+
+    rebuildLayout(STATE.layoutN);
+    setMuted(PLAY.muted);
+    setHudVisible(STATE.hudVisible);
+
+    if (P.autoplay) {
+      // Si hay slots guardados, intenta reproducirlos
+      if (last?.slots && Array.isArray(last.slots)) {
+        for (let i = 0; i < Math.min(last.slots.length, STATE.layoutN); i++) {
+          const id = String(last.slots[i] || "");
+          const cam = id ? CATALOG.byId.get(id) : null;
+          if (cam) playInSlot(i, cam, "boot").then(() => {});
+        }
+      } else if (CATALOG.list.length) {
+        playInSlot(0, CATALOG.list[0], "boot").then(() => {});
       }
-    } else {
-      setNowUIFromActive();
-      emitState();
     }
 
+    UI.subline.textContent = `Online • ${APP.name} v${APP.ver}`;
     setSignal("good", "ready");
+    emitState({ boot: true });
   })();
 })();
