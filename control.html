@@ -1,4 +1,4 @@
-<!-- control.html — CamStudio Room CONTROL (v1.0.1 | 2026-01-14) -->
+<!-- control.html — CamStudio Room CONTROL (v1.1.0 | MULTIVIEW + CATALOG EDITOR) -->
 <!doctype html>
 <html lang="es" data-theme="dark">
 <head>
@@ -16,7 +16,7 @@
       --panel: rgba(255,255,255,0.06);
       --panel2: rgba(255,255,255,0.10);
       --stroke: rgba(255,255,255,0.14);
-      --stroke2: rgba(255,255,255,0.20);
+      --stroke2: rgba(255,255,255,0.22);
       --text: rgba(231,233,234,0.94);
       --muted: rgba(231,233,234,0.68);
       --muted2: rgba(231,233,234,0.52);
@@ -49,6 +49,7 @@
       grid-template-rows: auto 1fr;
       gap: 12px;
       padding: 14px;
+      min-height: 0;
     }
 
     .topbar{
@@ -179,7 +180,7 @@
       flex-wrap:wrap;
     }
 
-    .input, select{
+    .input, select, textarea{
       width:100%;
       border: 1px solid rgba(255,255,255,0.14);
       background: rgba(0,0,0,0.22);
@@ -190,13 +191,16 @@
       outline:none;
       transition: border-color .18s ease, background .18s ease;
     }
-    .input:focus, select:focus{ border-color: rgba(130,166,255,0.40); background: rgba(0,0,0,0.30); }
+    textarea{ min-height: 110px; resize: vertical; }
+    .input:focus, select:focus, textarea:focus{ border-color: rgba(130,166,255,0.40); background: rgba(0,0,0,0.30); }
 
     .split{
       display:grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
+
+    .hr{ height:1px; background: rgba(255,255,255,0.10); margin: 10px 0; }
 
     .list{
       padding: 8px;
@@ -269,142 +273,130 @@
       white-space:nowrap;
     }
 
-    .right{
-      display:grid;
-      grid-template-rows: auto 1fr;
-      gap: 12px;
-      min-height:0;
-    }
-
-    .program{
+    /* Right panel scrollable */
+    .rightScroll{
+      overflow:auto;
+      min-height: 0;
       padding: 12px;
-      display:grid;
-      gap: 10px;
     }
 
-    .program .big{
-      font-weight: 820;
-      letter-spacing: .2px;
-      font-size: 16px;
-      margin:0;
-    }
-
-    .program .sub{
-      color: var(--muted2);
-      font-size: 12px;
-      margin-top:-4px;
-    }
+    .big{ font-size: 14px; font-weight: 800; letter-spacing:.2px; margin:0; }
+    .sub{ color: var(--muted2); font-size: 12px; margin-top:4px; }
 
     .kpi{
+      margin-top: 10px;
       display:grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 10px;
     }
-    .kpi .box{
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(0,0,0,0.20);
+    .box{
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(0,0,0,0.18);
       border-radius: 14px;
       padding: 10px;
     }
-    .kpi .label{ color: var(--muted2); font-size: 11px; }
-    .kpi .value{ margin-top:4px; font-weight: 780; }
+    .label{ color: var(--muted2); font-size: 12px; }
+    .value{ font-weight: 800; margin-top:4px; }
 
-    .detail{
-      padding: 12px;
-      overflow:auto;
-      min-height:0;
-      border-top: 1px solid rgba(255,255,255,0.10);
-    }
-
-    .detail .head{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-
-    .detail h3{
-      margin:0;
-      font-weight: 820;
-      font-size: 16px;
-      letter-spacing: .2px;
-      line-height:1.2;
-    }
-    .detail .small{ color: var(--muted); font-size: 12px; line-height: 1.35; }
-
-    .thumb{
-      width: 220px;
-      height: 124px;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,0.14);
-      background: rgba(0,0,0,0.22);
-      overflow:hidden;
-      flex: 0 0 auto;
-    }
-    .thumb img{
-      width:100%; height:100%;
-      object-fit: cover;
-      display:block;
-      filter: contrast(1.04) saturate(1.05);
-    }
+    .mono{ font-family: var(--mono); }
+    .small{ color: var(--muted2); font-size:12px; line-height:1.35; }
 
     .footerBtns{
       display:flex;
-      gap:10px;
+      gap: 10px;
       flex-wrap:wrap;
       margin-top: 10px;
     }
 
-    .hr{
-      height:1px;
-      background: rgba(255,255,255,0.10);
-      margin: 10px 0;
+    .slotBar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      align-items:center;
+    }
+    .slotBtn{
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.18);
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      cursor:pointer;
+      user-select:none;
+    }
+    .slotBtn.active{
+      border-color: rgba(130,166,255,0.45);
+      background: rgba(130,166,255,0.16);
     }
 
-    .mono{ font-family: var(--mono); }
+    @media (max-width: 980px){
+      .main{ grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 
 <body>
   <div class="grid">
     <header class="topbar">
-      <div class="brand">
+      <div class="brand" title="CamStudio Room">
         <div class="logo" aria-hidden="true"></div>
         <div>
-          <div><strong>CamStudio</strong> <span style="color:var(--muted2)">• Control Room</span></div>
-          <div class="sub" id="subline">Cargando catálogo…</div>
+          <div><strong>CamStudio</strong> <span style="color:var(--muted2)">• Control</span></div>
+          <div class="sub" id="subline">Ready</div>
         </div>
       </div>
 
       <div class="row" style="justify-content:flex-end">
-        <span class="pill" title="Key activa">
-          <span style="opacity:.9">KEY</span>
-          <span class="badge" id="txtKey">main</span>
-        </span>
-        <span class="pill" id="pillPlayer">
-          <span class="dot" id="dotPlayer"></span>
-          <span id="txtPlayer">Player: desconectado</span>
-        </span>
-        <button class="btn ghost" id="btnPing" title="Ping">🛰️ Ping</button>
-        <button class="btn" id="btnReloadCams" title="Recargar cams.json">↻ Recargar</button>
-        <button class="btn danger" id="btnStop">⏹ Stop</button>
+        <span class="pill"><span style="opacity:.85">KEY</span> <span class="mono" id="txtKey">main</span></span>
+        <span class="pill"><span class="dot warn" id="dotPlayer"></span><span id="txtPlayer">Player: desconectado</span></span>
+
+        <button class="btn" id="btnPing">📡 Ping</button>
+        <button class="btn" id="btnReloadCams">↻ Reload catálogo</button>
       </div>
     </header>
 
     <div class="main">
-      <!-- Left: catalog -->
+      <!-- Left -->
       <section class="panel">
         <div class="panelHead">
-          <div class="title">📡 Catálogo <span class="hint" id="txtCount">0</span></div>
-          <div class="row" style="gap:8px">
-            <button class="btn" id="btnPrev">⟵ Prev</button>
-            <button class="btn" id="btnNext">Next ⟶</button>
-          </div>
+          <div class="title">Catálogo <span class="badge" id="txtCount">(0)</span></div>
+          <div class="hint">Filtra, selecciona y haz TAKE por slot.</div>
         </div>
 
         <div class="controls">
-          <input class="input" id="q" placeholder="Buscar… (título, id, tag, región)" autocomplete="off" />
+          <!-- Multiview -->
+          <div class="row" style="justify-content:space-between">
+            <span class="pill"><span class="dot" id="dotMode"></span><span id="txtMode">Modo: manual</span></span>
+            <button class="btn good" id="btnTake">🎬 TAKE (Play)</button>
+          </div>
+
+          <div class="row">
+            <span class="badge">Layout</span>
+            <button class="btn" id="btnLayout1">1</button>
+            <button class="btn" id="btnLayout2">2</button>
+            <button class="btn" id="btnLayout4">4</button>
+            <button class="btn" id="btnLayout6">6</button>
+            <button class="btn" id="btnLayout9">9</button>
+            <input class="input" id="layoutN" type="number" min="1" max="12" step="1" value="4" style="max-width:120px" />
+            <button class="btn primary" id="btnLayoutApply">Aplicar</button>
+          </div>
+
+          <div class="row" style="align-items:flex-start">
+            <span class="badge">Slot</span>
+            <div class="slotBar" id="slotBar"></div>
+          </div>
+
+          <!-- navegación por slot -->
+          <div class="row">
+            <button class="btn" id="btnPrev">⟵ Prev</button>
+            <button class="btn" id="btnNext">Next ⟶</button>
+            <button class="btn" id="btnStopSlot">⏹ Stop slot</button>
+            <button class="btn danger" id="btnStop">⛔ Stop ALL</button>
+          </div>
+
+          <div class="hr"></div>
+
+          <!-- filtros -->
+          <input class="input" id="q" placeholder="Buscar (título, id, tag, región, ciudad)" autocomplete="off" />
           <div class="split">
             <select id="kind">
               <option value="any">Tipo: cualquiera</option>
@@ -424,11 +416,7 @@
 
           <div class="hr"></div>
 
-          <div class="row" style="justify-content:space-between">
-            <span class="pill"><span class="dot" id="dotMode"></span><span id="txtMode">Modo: manual</span></span>
-            <button class="btn good" id="btnTake">🎬 TAKE (Play)</button>
-          </div>
-
+          <!-- rotación (aplica al slot activo) -->
           <div class="split">
             <select id="rotKind">
               <option value="any">Rotación: cualquier tipo</option>
@@ -450,73 +438,148 @@
         <div class="list" id="list"></div>
       </section>
 
-      <!-- Right: program + details -->
-      <section class="panel right">
-        <div class="program">
+      <!-- Right -->
+      <section class="panel">
+        <div class="panelHead">
+          <div class="title">Programa + Editor</div>
+          <div class="hint">Estado del player + editar cams.json (override + export).</div>
+        </div>
+
+        <div class="rightScroll">
+          <!-- Programa -->
           <div>
             <p class="big" id="progTitle">Programa: —</p>
             <div class="sub" id="progSub">Esperando estado del player…</div>
-          </div>
 
-          <div class="kpi">
-            <div class="box">
-              <div class="label">Estado</div>
-              <div class="value" id="kpiState">—</div>
+            <div class="kpi">
+              <div class="box">
+                <div class="label">Estado</div>
+                <div class="value" id="kpiState">—</div>
+              </div>
+              <div class="box">
+                <div class="label">Mute</div>
+                <div class="value" id="kpiMute">—</div>
+              </div>
+              <div class="box">
+                <div class="label">Fails</div>
+                <div class="value" id="kpiFails">—</div>
+              </div>
             </div>
-            <div class="box">
-              <div class="label">Mute</div>
-              <div class="value" id="kpiMute">—</div>
-            </div>
-            <div class="box">
-              <div class="label">Fails</div>
-              <div class="value" id="kpiFails">—</div>
-            </div>
-          </div>
 
-          <div class="row">
-            <button class="btn" id="btnMute">🔇 Toggle mute</button>
-            <button class="btn" id="btnRotateNow">⚡ Rotar ahora</button>
-          </div>
-        </div>
-
-        <div class="detail">
-          <div class="head">
-            <div>
-              <h3 id="selTitle">Selecciona una cámara</h3>
-              <div class="small" id="selMeta">Haz click en una tarjeta del catálogo para ver detalles.</div>
-            </div>
-            <div class="thumb" id="thumbBox" style="display:none">
-              <img id="thumb" alt="thumbnail" />
+            <div class="row" style="margin-top:10px">
+              <button class="btn" id="btnMute">🔇 Toggle mute</button>
+              <button class="btn" id="btnRotateNow">⚡ Rotar ahora</button>
             </div>
           </div>
 
           <div class="hr"></div>
 
-          <div class="small">
-            <div><b>ID:</b> <span class="mono" id="selId">—</span></div>
-            <div><b>Tipo:</b> <span class="mono" id="selKind">—</span></div>
-            <div><b>Src:</b> <span class="mono" id="selSrc">—</span></div>
-            <div><b>Tags:</b> <span class="mono" id="selTags">—</span></div>
-            <div><b>Región:</b> <span class="mono" id="selRegion">—</span></div>
-          </div>
+          <!-- Detalle selección -->
+          <div>
+            <h3 id="selTitle" style="margin:0 0 6px 0">Selecciona una cámara</h3>
+            <div class="small" id="selMeta">Haz click en una tarjeta del catálogo para ver detalles.</div>
 
-          <div class="footerBtns">
-            <button class="btn good" id="btnPlaySel">▶ Play selección</button>
-            <button class="btn" id="btnFav">★ Fav</button>
-            <button class="btn" id="btnCopyId">⧉ Copiar ID</button>
+            <div class="hr"></div>
+
+            <div class="small">
+              <div><b>ID:</b> <span class="mono" id="selId">—</span></div>
+              <div><b>Tipo:</b> <span class="mono" id="selKind">—</span></div>
+              <div><b>Src:</b> <span class="mono" id="selSrc">—</span></div>
+              <div><b>Tags:</b> <span class="mono" id="selTags">—</span></div>
+              <div><b>Región:</b> <span class="mono" id="selRegion">—</span></div>
+              <div><b>Ciudad:</b> <span class="mono" id="selCity">—</span></div>
+              <div><b>País:</b> <span class="mono" id="selCountry">—</span></div>
+              <div><b>Continente:</b> <span class="mono" id="selContinent">—</span></div>
+              <div><b>TZ:</b> <span class="mono" id="selTz">—</span></div>
+              <div><b>Lat/Lon:</b> <span class="mono" id="selLatLon">—</span></div>
+            </div>
+
+            <div class="footerBtns">
+              <button class="btn good" id="btnPlaySel">▶ Play selección</button>
+              <button class="btn" id="btnFav">★ Fav</button>
+              <button class="btn" id="btnCopyId">⧉ Copiar ID</button>
+              <button class="btn" id="btnEditFromSel">✎ Editar</button>
+            </div>
           </div>
 
           <div class="hr"></div>
 
-          <div class="small">
-            Consejos: abre el player en OBS con <span class="badge">player.html?key=main</span> y controla desde aquí con <span class="badge">control.html?key=main</span>.
+          <!-- Editor catálogo -->
+          <div>
+            <p class="big" style="margin-bottom:6px">Editor de catálogo (override + export)</p>
+            <div class="small">En GitHub Pages no se puede “escribir” el archivo en el servidor. Aquí lo guardas como <b>override local</b> (player/control lo usan) y puedes <b>exportar</b> el JSON para reemplazar <span class="mono">cams.json</span> en tu repo.</div>
+
+            <div class="row" style="margin-top:10px">
+              <button class="btn" id="btnNewCam">➕ Nueva</button>
+              <button class="btn primary" id="btnSaveCam">💾 Guardar</button>
+              <button class="btn danger" id="btnDeleteCam">🗑 Borrar</button>
+            </div>
+
+            <div class="split" style="margin-top:10px">
+              <input class="input" id="edId" placeholder="id (único)" />
+              <input class="input" id="edTitle" placeholder="title" />
+            </div>
+
+            <div class="split" style="margin-top:10px">
+              <select id="edKind">
+                <option value="youtube">youtube</option>
+                <option value="hls">hls</option>
+                <option value="image">image</option>
+              </select>
+              <input class="input" id="edSrc" placeholder="src (YT id / url HLS / url imagen)" />
+            </div>
+
+            <div class="split" style="margin-top:10px">
+              <input class="input" id="edRegion" placeholder="region (ISO, ej ES/US/JP)" />
+              <input class="input" id="edTags" placeholder="tags (coma) ej: city,beach,news" />
+            </div>
+
+            <div class="split" style="margin-top:10px">
+              <input class="input" id="edCity" placeholder="city" />
+              <input class="input" id="edCountry" placeholder="country (nombre)" />
+            </div>
+
+            <div class="split" style="margin-top:10px">
+              <input class="input" id="edContinent" placeholder="continent (Europa/Asia/...)" />
+              <input class="input" id="edTz" placeholder="tz (IANA) ej: Europe/Madrid" />
+            </div>
+
+            <div class="split" style="margin-top:10px">
+              <input class="input" id="edLat" placeholder="lat" />
+              <input class="input" id="edLon" placeholder="lon" />
+            </div>
+
+            <div class="split" style="margin-top:10px">
+              <input class="input" id="edPriority" placeholder="priority (0..100)" />
+              <input class="input" id="edWeight" placeholder="weight (1..)" />
+            </div>
+
+            <div class="row" style="margin-top:10px">
+              <button class="btn" id="btnGeocode">📍 Geocodificar (OSM)</button>
+              <button class="btn" id="btnClearOverride">♻️ Quitar override</button>
+            </div>
+
+            <div class="row" style="margin-top:10px">
+              <button class="btn" id="btnExportJson">⬇ Export JSON</button>
+              <button class="btn" id="btnCopyJson">⧉ Copiar JSON</button>
+              <input class="input" id="fileImport" type="file" accept=".json,application/json" />
+            </div>
+
+            <div class="row" style="margin-top:10px">
+              <textarea id="txtJson" placeholder="(Opcional) pega aquí un JSON completo para importar…"></textarea>
+              <button class="btn primary" id="btnImportJson">Importar</button>
+            </div>
+
+            <div class="hr"></div>
+            <div class="small">
+              Consejos: abre el player en OBS con <span class="badge">player.html?key=main&layout=6</span> y controla con <span class="badge">control.html?key=main</span>.
+            </div>
           </div>
         </div>
       </section>
     </div>
   </div>
 
-  <!-- Cache-bust para evitar JS viejo en GitHub Pages -->
-  <script src="./control.js?v=camstudio-1.0.1-2026-01-14" defer></script>
+  <script src="./control.js?v=camstudio-1.1.0-2026-01-14" defer></script>
 </body>
 </html>

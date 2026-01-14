@@ -1,4 +1,4 @@
-<!-- player.html — CamStudio Room PLAYER (v1.0.1 | 2026-01-14) -->
+<!-- player.html — CamStudio Room PLAYER (v1.1.0 | MULTIVIEW) -->
 <!doctype html>
 <html lang="es" data-theme="dark">
 <head>
@@ -16,7 +16,7 @@
       --panel: rgba(255,255,255,0.06);
       --panel2: rgba(255,255,255,0.10);
       --stroke: rgba(255,255,255,0.14);
-      --stroke2: rgba(255,255,255,0.20);
+      --stroke2: rgba(255,255,255,0.22);
       --text: rgba(231,233,234,0.94);
       --muted: rgba(231,233,234,0.68);
       --muted2: rgba(231,233,234,0.52);
@@ -152,15 +152,44 @@
       place-items:stretch;
     }
 
-    .playerArea{
+    /* MULTIVIEW GRID */
+    .gridArea{
+      position:absolute; inset:0;
+      display:grid;
+      gap: 10px;
+      padding: 10px;
+    }
+    .gridArea.layout-1{ grid-template-columns: 1fr; grid-template-rows: 1fr; }
+    .gridArea.layout-2{ grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+    .gridArea.layout-4{ grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    .gridArea.layout-6{ grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    .gridArea.layout-9{ grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; }
+
+    .tile{
+      position:relative;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.05);
+      overflow:hidden;
+      box-shadow: 0 14px 30px rgba(0,0,0,0.28);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .tile.active{
+      outline: 2px solid rgba(130,166,255,0.45);
+      outline-offset: -2px;
+      border-color: rgba(130,166,255,0.45);
+      background: rgba(130,166,255,0.08);
+    }
+
+    .tileMedia{
       position:absolute; inset:0;
       display:grid;
       place-items:stretch;
     }
-
-    .playerArea iframe,
-    .playerArea video,
-    .playerArea img{
+    .tileMedia iframe,
+    .tileMedia video,
+    .tileMedia img{
       width:100%;
       height:100%;
       border:0;
@@ -168,6 +197,84 @@
       background: #000;
       object-fit: cover;
     }
+
+    .tileHud{
+      position:absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      pointer-events:none;
+    }
+
+    .tileCard{
+      pointer-events:none;
+      max-width: 76%;
+      padding: 10px 10px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(10,12,18,0.50);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+
+    .tileTopRow{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom: 6px;
+    }
+
+    .tileTitle{
+      font-weight: 780;
+      letter-spacing: 0.2px;
+      font-size: 13px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      max-width: 100%;
+    }
+
+    .tileMeta{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0,0,0,0.22);
+      color: rgba(231,233,234,0.92);
+      font-size: 11px;
+      white-space:nowrap;
+    }
+
+    .toast{
+      position:absolute;
+      left: 14px;
+      top: 14px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(10,12,18,0.72);
+      color: var(--muted);
+      font-size: 12px;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.35);
+      display:none;
+      z-index: 30;
+    }
+    .toast.show{ display:block; }
 
     .hud{
       position:absolute;
@@ -179,6 +286,7 @@
       align-items:flex-end;
       gap: 10px;
       pointer-events:none;
+      z-index: 20;
     }
 
     .card{
@@ -253,28 +361,10 @@
     .bars i:nth-child(2){ height: 9px; }
     .bars i:nth-child(3){ height: 12px; }
     .bars i:nth-child(4){ height: 14px; }
-    .bars.good i{ background: rgba(46,211,183,0.70); }
-    .bars.warn i{ background: rgba(245,196,81,0.72); }
-    .bars.bad i{ background: rgba(255,92,122,0.70); }
 
-    .toast{
-      position:absolute;
-      top: 14px;
-      left: 50%;
-      transform: translateX(-50%);
-      max-width: min(820px, calc(100% - 28px));
-      padding: 10px 12px;
-      border-radius: 999px;
-      border: 1px solid var(--stroke);
-      background: rgba(10,12,18,0.58);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      color: var(--muted);
-      font-size: 12px;
-      box-shadow: 0 12px 28px rgba(0,0,0,0.35);
-      display:none;
-    }
-    .toast.show{ display:block; }
+    .bars.good i{ background: rgba(46,211,183,0.65); }
+    .bars.warn i{ background: rgba(245,196,81,0.65); }
+    .bars.bad i{ background: rgba(255,92,122,0.75); }
 
     .kbd{
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
@@ -309,10 +399,12 @@
     </header>
 
     <main class="stage" id="stage">
-      <div class="playerArea" id="playerArea"></div>
+      <!-- MULTIVIEW container -->
+      <div class="gridArea layout-1" id="playerArea"></div>
 
       <div class="toast" id="toast"></div>
 
+      <!-- Global HUD (muestra slot activo) -->
       <div class="hud">
         <div class="card" style="min-width:min(680px,100%)">
           <div class="nowTitle">
@@ -337,7 +429,7 @@
           </div>
           <div class="card">
             <div class="small">
-              Atajos: <span class="kbd">F</span> fullscreen · <span class="kbd">M</span> mute · <span class="kbd">S</span> stop · <span class="kbd">N</span> next
+              Atajos: <span class="kbd">1..9</span> slot · <span class="kbd">F</span> fullscreen · <span class="kbd">M</span> mute · <span class="kbd">S</span> stop · <span class="kbd">N</span> next
             </div>
           </div>
         </div>
@@ -345,7 +437,7 @@
     </main>
   </div>
 
-  <!-- Cache-bust para evitar JS viejo en GitHub Pages -->
-  <script src="./player.js?v=camstudio-1.0.1-2026-01-14" defer></script>
+  <!-- Cache-bust -->
+  <script src="./player.js?v=camstudio-1.1.0-2026-01-14" defer></script>
 </body>
 </html>
