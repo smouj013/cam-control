@@ -1,14 +1,15 @@
-/* control.js — CamStudio Room CONTROL (v1.0)
-   - UI tipo “studio room”
-   - Carga cams.json, filtra, favoritos, rotación
-   - Manda CMD al player y recibe STATE
+/* control.js — CamStudio Room CONTROL (v1.0.1)
+   ✅ Compatible con control.html (IDs intactos)
+   ✅ UI catálogo + filtros + favs + rotación
+   ✅ CMD robusto (BroadcastChannel + localStorage fallback)
+   ✅ Lee STATE + muestra ACKs del player (feedback instantáneo)
 */
 (() => {
   "use strict";
 
   const APP = {
     name: "CamStudioRoom",
-    ver: "1.0.0",
+    ver: "1.0.1",
     protocol: 1,
     camsUrl: "./cams.json",
   };
@@ -19,7 +20,12 @@
 
   const randId = (len = 10) => {
     const a = new Uint8Array(len);
-    (crypto?.getRandomValues?.(a) || a.fill(Math.random() * 255));
+    try {
+      crypto?.getRandomValues?.(a);
+    } catch {}
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] === 0) a[i] = Math.floor(Math.random() * 256);
+    }
     return [...a].map(x => (x % 36).toString(36)).join("");
   };
 
@@ -36,7 +42,6 @@
     subline: $("subline"),
     txtKey: $("txtKey"),
 
-    pillPlayer: $("pillPlayer"),
     dotPlayer: $("dotPlayer"),
     txtPlayer: $("txtPlayer"),
 
@@ -102,6 +107,12 @@
     UI.txtMode.textContent = "Modo: " + (isRotate ? "rotación" : "manual");
   }
 
+  function escapeHTML(s) {
+    return String(s).replace(/[&<>"']/g, (m) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[m]));
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Storage / bus
   // ─────────────────────────────────────────────────────────────────────────────
@@ -120,9 +131,17 @@
     seen.set(nonce, ts);
     if (seen.size > 300) {
       const cut = nowMs() - 60_000;
-      for (const [k,v] of seen) if (v < cut) seen.delete(k);
+      for (const [k, v] of seen) if (v < cut) seen.delete(k);
     }
     return false;
+  }
+
+  const PENDING = new Map(); // cmdNonce -> { cmd, ts }
+  function markPending(nonce, cmd) {
+    PENDING.set(nonce, { cmd: String(cmd || ""), ts: nowMs() });
+    // limpieza
+    const cut = nowMs() - 30_000;
+    for (const [k, v] of PENDING) if (v.ts < cut) PENDING.delete(k);
   }
 
   function sendCMD(cmd, data = {}) {
@@ -137,12 +156,16 @@
       data: data || {}
     };
 
-    try { if (bc) bc.postMessage(payload); } catch {}
+    try { bc?.postMessage(payload); } catch {}
     try { localStorage.setItem(LS_CMD, JSON.stringify(payload)); } catch {}
+
+    markPending(payload.nonce, payload.cmd);
     return payload.nonce;
   }
 
   let LAST_STATE = null;
+  let lastStateTs = 0;
+
   function onState(payload) {
     try {
       if (!payload || payload.v !== APP.protocol) return;
@@ -170,6 +193,7 @@
   // Catalog
   // ─────────────────────────────────────────────────────────────────────────────
   const CATALOG = { list: [], byId: new Map(), tags: new Set(), meta: {} };
+
   const STATE = {
     prefs: {
       favOnly: false,
@@ -178,7 +202,7 @@
       tag: "",
       selectedId: "",
       favs: {},
-      rot: { enabled:false, intervalSec: 40, kind:"any", tag:"" }
+      rot: { enabled: false, intervalSec: 40, kind: "any", tag: "" }
     }
   };
 
@@ -196,7 +220,9 @@
           ...STATE.prefs,
           ...p,
           favs: (p.favs && typeof p.favs === "object") ? p.favs : STATE.prefs.favs,
-          rot: (p.rot && typeof p.rot === "object") ? { ...STATE.prefs.rot, ...p.rot } : STATE.prefs.rot,
+          rot: (p.rot && typeof p.rot === "object")
+            ? { ...STATE.prefs.rot, ...p.rot }
+            : STATE.prefs.rot,
         };
       }
     } catch {}
@@ -210,12 +236,14 @@
       const json = await res.json();
       const cams = Array.isArray(json?.cams) ? json.cams : (Array.isArray(json) ? json : []);
       CATALOG.meta = json?.meta || {};
+
       const clean = [];
       const tags = new Set();
 
       for (const c of cams) {
         if (!c || typeof c !== "object") continue;
         if (c.disabled) continue;
+
         const id = String(c.id || "").trim();
         const kind = String(c.kind || "").trim();
         const src = String(c.src || "").trim();
@@ -232,11 +260,12 @@
           weight: Number.isFinite(+c.weight) ? +c.weight : 1,
           thumb: String(c.thumb || ""),
         };
+
         item.tags.forEach(t => tags.add(t));
         clean.push(item);
       }
 
-      clean.sort((a,b) => (b.priority - a.priority) || a.title.localeCompare(b.title));
+      clean.sort((a, b) => (b.priority - a.priority) || a.title.localeCompare(b.title));
       CATALOG.list = clean;
       CATALOG.byId = new Map(clean.map(x => [x.id, x]));
       CATALOG.tags = tags;
@@ -257,15 +286,14 @@
   }
 
   function fillTagSelects() {
-    // catálogo
-    const tags = [...CATALOG.tags].sort((a,b) => a.localeCompare(b));
-    const fill = (sel, includeAllLabel) => {
+    const tags = [...CATALOG.tags].sort((a, b) => a.localeCompare(b));
+    const fill = (sel, allLabel) => {
       const cur = sel.value;
       sel.innerHTML = "";
-      if (includeAllLabel) {
+      if (allLabel) {
         const opt0 = document.createElement("option");
         opt0.value = "";
-        opt0.textContent = includeAllLabel;
+        opt0.textContent = allLabel;
         sel.appendChild(opt0);
       }
       for (const t of tags) {
@@ -274,7 +302,6 @@
         opt.textContent = `#${t}`;
         sel.appendChild(opt);
       }
-      // restore if possible
       sel.value = cur;
     };
 
@@ -319,12 +346,6 @@
     `;
   }
 
-  function escapeHTML(s) {
-    return String(s).replace(/[&<>"']/g, (m) => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-    }[m]));
-  }
-
   function renderList() {
     const list = filtered();
     UI.txtCount.textContent = `(${list.length}/${CATALOG.list.length})`;
@@ -355,6 +376,7 @@
       ? `https://i.ytimg.com/vi/${encodeURIComponent(cam.src)}/hqdefault.jpg`
       : ""
     );
+
     if (thumb) {
       UI.thumbBox.style.display = "";
       UI.thumb.src = thumb;
@@ -363,7 +385,6 @@
       UI.thumb.removeAttribute("src");
     }
 
-    // update fav button
     const isFav = !!STATE.prefs.favs[cam.id];
     UI.btnFav.textContent = isFav ? "★ Quitar fav" : "★ Fav";
 
@@ -373,8 +394,6 @@
   // ─────────────────────────────────────────────────────────────────────────────
   // Program render (state desde player)
   // ─────────────────────────────────────────────────────────────────────────────
-  let lastStateTs = 0;
-
   function renderProgram(st, ts) {
     lastStateTs = ts || nowMs();
     const ok = (nowMs() - lastStateTs) < 4500;
@@ -382,6 +401,16 @@
 
     const mode = String(st?.mode || "manual");
     setModeLabel(mode);
+
+    // ACK feedback
+    if (st?.ack?.cmdNonce) {
+      const a = st.ack;
+      const pending = PENDING.get(a.cmdNonce);
+      if (pending) {
+        PENDING.delete(a.cmdNonce);
+        UI.subline.textContent = `${a.ok ? "✅" : "⚠"} ACK ${pending.cmd}: ${String(a.note || "")}`.trim();
+      }
+    }
 
     const now = st?.now;
     if (now) {
@@ -396,26 +425,26 @@
     UI.kpiMute.textContent = st?.muted ? "MUTED" : "AUDIO";
     UI.kpiFails.textContent = String(st?.failCount ?? "—");
 
-    // rotación UI sync (mejor esfuerzo)
+    // sync rotación (best effort)
     if (st?.rotate && typeof st.rotate === "object") {
       const r = st.rotate;
       STATE.prefs.rot.enabled = !!r.enabled;
       STATE.prefs.rot.intervalSec = clamp(Number(r.intervalSec || STATE.prefs.rot.intervalSec), 8, 3600);
       STATE.prefs.rot.kind = String(r.kind || "any");
       STATE.prefs.rot.tag = String(r.tag || "");
+
       UI.rotKind.value = STATE.prefs.rot.kind;
       UI.rotSec.value = String(STATE.prefs.rot.intervalSec);
       UI.rotTag.value = STATE.prefs.rot.tag;
+
       UI.btnRotate.textContent = STATE.prefs.rot.enabled ? "⟲ Rotación ON" : "⟲ Rotación";
       savePrefs();
     }
 
-    if (st?.lastError) {
-      UI.progSub.textContent += ` • ⚠ ${st.lastError}`;
-    }
+    if (st?.lastError) UI.progSub.textContent += ` • ⚠ ${st.lastError}`;
   }
 
-  // heartbeat visual del player
+  // heartbeat visual
   setInterval(() => {
     const ok = (nowMs() - lastStateTs) < 4500;
     setPlayerStatus(ok, ok ? "Player: conectado" : "Player: desconectado");
@@ -471,9 +500,11 @@
   UI.btnPlaySel.addEventListener("click", () => {
     const id = STATE.prefs.selectedId;
     if (!id) return;
+
     sendCMD("PLAY_ID", { id });
-    // al hacer play manual, suele implicar rotación off
-    sendCMD("ROTATE_SET", { enabled:false, intervalSec: Number(UI.rotSec.value || 40), kind: UI.rotKind.value, tag: UI.rotTag.value });
+    // al hacer play manual -> rotación off
+    const r = readRotateUI();
+    sendCMD("ROTATE_SET", { ...r, enabled: false });
   });
 
   UI.btnTake.addEventListener("click", () => UI.btnPlaySel.click());
@@ -489,7 +520,23 @@
   UI.btnCopyId.addEventListener("click", async () => {
     const id = STATE.prefs.selectedId || "";
     if (!id) return;
-    try { await navigator.clipboard.writeText(id); } catch {}
+    try {
+      await navigator.clipboard.writeText(id);
+      UI.subline.textContent = `Copiado: ${id}`;
+    } catch {
+      // fallback
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = id;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+        UI.subline.textContent = `Copiado: ${id}`;
+      } catch {}
+    }
   });
 
   UI.btnPrev.addEventListener("click", () => sendCMD("PREV", {}));
@@ -509,9 +556,8 @@
   });
 
   UI.btnRotateNow.addEventListener("click", () => {
-    // pedir al player rotar ya (sin tocar interval)
     const r = readRotateUI();
-    sendCMD("ROTATE_SET", { ...r, enabled:true, rotateNow:true });
+    sendCMD("ROTATE_SET", { ...r, enabled: true, rotateNow: true });
   });
 
   UI.btnRotate.addEventListener("click", () => {
@@ -548,7 +594,7 @@
     setPlayerStatus(false, "Player: desconectado");
     setModeLabel("manual");
 
-    // intenta leer último estado desde storage (por si control abre después)
+    // intenta leer último state (control puede abrir después)
     try {
       const raw = localStorage.getItem(LS_STATE);
       if (raw) onState(JSON.parse(raw));
@@ -556,7 +602,7 @@
 
     loadCams();
 
-    // shortcut: Enter en búsqueda -> TAKE si hay selección
+    // Enter en búsqueda -> TAKE
     UI.q.addEventListener("keydown", (e) => {
       if (e.key === "Enter") UI.btnTake.click();
     });
